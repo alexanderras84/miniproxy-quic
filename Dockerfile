@@ -43,9 +43,6 @@ RUN chown -R miniproxy:miniproxy /etc/sing-box/ /etc/miniproxy/ && \
     chown miniproxy:miniproxy /entrypoint.sh /generateACL.sh /dynDNSCron.sh /acl_firewall.sh && \
     chmod +x /entrypoint.sh /generateACL.sh /dynDNSCron.sh /acl_firewall.sh
 
-# Switch to non-root user
-USER miniproxy
-
 # Entrypoint and default command
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["/bin/bash", "/entrypoint.sh"]
