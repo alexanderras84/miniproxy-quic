@@ -2,7 +2,6 @@
 
 echo "[INFO] [DynDNSCron] Starting dynamic DNS ACL refresh..."
 
-# Run the ACL generator with a timeout
 timeout 40s /bin/bash /generateACL.sh
 retVal=$?
 
@@ -14,9 +13,7 @@ elif [ $retVal -ne 0 ]; then
   exit 1
 else
   echo "[INFO] [DynDNSCron] ACL successfully regenerated."
-
   echo "[INFO] [DynDNSCron] Updating firewall rules..."
   /bin/bash /acl_firewall.sh
-
   echo "[INFO] [DynDNSCron] Firewall rules updated."
 fi
