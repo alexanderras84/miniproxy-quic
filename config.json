@@ -5,20 +5,26 @@
   },
   "inbounds": [
     {
-      "type": "redirect",
-      "tag": "redir-tcp",
+      "type": "redirect",             // TCP transparent proxy inbound
+      "tag": "redirect-tcp",
       "listen": "0.0.0.0",
       "listen_port": 15001,
-      "sniff": true,
-      "sniff_override_destination": true
+      "sniff": {
+        "enabled": true,
+        "dest_override": ["http", "tls", "quic"],
+        "metadata_only": false
+      }
     },
     {
-      "type": "tproxy",
+      "type": "tproxy",              // UDP transparent proxy inbound
       "tag": "tproxy-udp",
       "listen": "0.0.0.0",
       "listen_port": 15001,
-      "sniff": true,
-      "sniff_override_destination": true
+      "sniff": {
+        "enabled": true,
+        "dest_override": ["quic"],
+        "metadata_only": false
+      }
     }
   ],
   "outbounds": [
@@ -30,7 +36,15 @@
   "route": {
     "rules": [
       {
-        "ip": ["geoip:private"],
+        "type": "field",
+        "ip_cidr": [
+          "10.0.0.0/8",
+          "172.16.0.0/12",
+          "192.168.0.0/16",
+          "127.0.0.0/8",
+          "::1/128",
+          "fc00::/7"
+        ],
         "outbound": "direct"
       }
     ],
