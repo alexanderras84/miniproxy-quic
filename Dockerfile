@@ -1,6 +1,7 @@
 FROM alpine:3.20
 
 ARG TARGETPLATFORM
+ARG SINGBOX_VERSION=1.12.0-beta.33
 
 # Environment variables
 ENV ALLOWED_CLIENTS=127.0.0.1
@@ -18,22 +19,20 @@ RUN echo "Building for $TARGETPLATFORM"
 # Install all required packages
 RUN apk update && apk upgrade && \
     apk add --no-cache \
-        bash curl git jq tini \
-        gnupg procps ca-certificates openssl \
+        jq tini curl bash gnupg procps ca-certificates openssl \
         dog lua5.4-filesystem ipcalc libcap \
         supercronic step-cli bind-tools \
-        iptables ip6tables ipset iproute2 unzip \
-        go gcc g++ libc-dev make && \
+        iptables ip6tables ipset iproute2 unzip && \
     rm -rf /var/cache/apk/*
 
-# Build sing-box from the dev branch
-RUN git clone --branch dev-next --depth 1 https://github.com/SagerNet/sing-box.git /src/sing-box && \
-    cd /src/sing-box && \
-    go build -o /usr/local/bin/sing-box ./cmd/sing-box && \
-    strip /usr/local/bin/sing-box && \
-    rm -rf /src/sing-box
+# Install sing-box (binary only)
+RUN curl -fSL "https://github.com/SagerNet/sing-box/releases/download/v${SINGBOX_VERSION}/sing-box-${SINGBOX_VERSION}-linux-amd64.tar.gz" \
+    -o /tmp/sing-box.tar.gz && \
+    tar -xzf /tmp/sing-box.tar.gz -C /tmp && \
+    install -m 755 /tmp/sing-box*/sing-box /usr/local/bin/sing-box && \
+    rm -rf /tmp/sing-box* /tmp/sing-box.tar.gz
 
-# Create non-root user and groups
+# Create non-root user and groups (if needed later)
 RUN addgroup miniproxy && adduser -D -H -G miniproxy miniproxy
 
 # Create config directories
