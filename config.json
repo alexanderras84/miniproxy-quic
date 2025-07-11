@@ -21,7 +21,12 @@
       "tag": "tproxy-udp",
       "listen": "0.0.0.0",
       "listen_port": 15001,
-      "network": "udp"
+      "network": "udp",
+      "sniff": {
+        "enabled": true,
+        "dest_override": ["quic"],
+        "metadata_only": false
+      }
     }
   ],
   "outbounds": [
