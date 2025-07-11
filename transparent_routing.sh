@@ -14,23 +14,27 @@ echo "[INFO] Applying transparent proxy routing rules..."
 iptables -t mangle -N DIVERT 2>/dev/null || true
 iptables -t mangle -F DIVERT
 
-# Flush previous rules to avoid duplicates
+# Flush previous rules for TCP ports 80 and 443 and UDP port 443 to avoid duplicates
+iptables -t mangle -D PREROUTING -p tcp --dport 80 -j TPROXY --on-port $TCP_INBOUND_PORT --tproxy-mark $MARK 2>/dev/null || true
 iptables -t mangle -D PREROUTING -p tcp --dport 443 -j TPROXY --on-port $TCP_INBOUND_PORT --tproxy-mark $MARK 2>/dev/null || true
 iptables -t mangle -D PREROUTING -p udp --dport 443 -j TPROXY --on-port $UDP_INBOUND_PORT --tproxy-mark $MARK 2>/dev/null || true
 iptables -t mangle -D PREROUTING -p tcp -m socket -j DIVERT 2>/dev/null || true
-iptables -t mangle -D PREROUTING -p udp --dport 443 -m socket -j DIVERT 2>/dev/null || true
+iptables -t mangle -D PREROUTING -p udp -m socket -j DIVERT 2>/dev/null || true
 
 # Add rules back
 
 # DIVERT chain rules for TCP & UDP
 iptables -t mangle -A PREROUTING -p tcp -m socket -j DIVERT
-iptables -t mangle -A PREROUTING -p udp --dport 443 -m socket -j DIVERT
+iptables -t mangle -A PREROUTING -p udp -m socket -j DIVERT
 
 iptables -t mangle -A DIVERT -j MARK --set-mark $MARK
 iptables -t mangle -A DIVERT -j ACCEPT
 
-# TPROXY rules for TCP and UDP port 443
+# TPROXY rules:
+# TCP port 80 and 443
+iptables -t mangle -A PREROUTING -p tcp --dport 80 -j TPROXY --on-port $TCP_INBOUND_PORT --tproxy-mark $MARK
 iptables -t mangle -A PREROUTING -p tcp --dport 443 -j TPROXY --on-port $TCP_INBOUND_PORT --tproxy-mark $MARK
+# UDP port 443 only
 iptables -t mangle -A PREROUTING -p udp --dport 443 -j TPROXY --on-port $UDP_INBOUND_PORT --tproxy-mark $MARK
 
 # --- IPv6 ---
@@ -39,23 +43,27 @@ iptables -t mangle -A PREROUTING -p udp --dport 443 -j TPROXY --on-port $UDP_INB
 ip6tables -t mangle -N DIVERT 2>/dev/null || true
 ip6tables -t mangle -F DIVERT
 
-# Flush previous rules
+# Flush previous rules for TCP ports 80 and 443 and UDP port 443 IPv6
+ip6tables -t mangle -D PREROUTING -p tcp --dport 80 -j TPROXY --on-port $TCP_INBOUND_PORT --tproxy-mark $MARK 2>/dev/null || true
 ip6tables -t mangle -D PREROUTING -p tcp --dport 443 -j TPROXY --on-port $TCP_INBOUND_PORT --tproxy-mark $MARK 2>/dev/null || true
 ip6tables -t mangle -D PREROUTING -p udp --dport 443 -j TPROXY --on-port $UDP_INBOUND_PORT --tproxy-mark $MARK 2>/dev/null || true
 ip6tables -t mangle -D PREROUTING -p tcp -m socket -j DIVERT 2>/dev/null || true
-ip6tables -t mangle -D PREROUTING -p udp --dport 443 -m socket -j DIVERT 2>/dev/null || true
+ip6tables -t mangle -D PREROUTING -p udp -m socket -j DIVERT 2>/dev/null || true
 
 # Add rules back
 
 # DIVERT chain rules for TCP & UDP IPv6
 ip6tables -t mangle -A PREROUTING -p tcp -m socket -j DIVERT
-ip6tables -t mangle -A PREROUTING -p udp --dport 443 -m socket -j DIVERT
+ip6tables -t mangle -A PREROUTING -p udp -m socket -j DIVERT
 
 ip6tables -t mangle -A DIVERT -j MARK --set-mark $MARK
 ip6tables -t mangle -A DIVERT -j ACCEPT
 
-# TPROXY rules for TCP and UDP port 443 IPv6
+# TPROXY rules IPv6:
+# TCP port 80 and 443
+ip6tables -t mangle -A PREROUTING -p tcp --dport 80 -j TPROXY --on-port $TCP_INBOUND_PORT --tproxy-mark $MARK
 ip6tables -t mangle -A PREROUTING -p tcp --dport 443 -j TPROXY --on-port $TCP_INBOUND_PORT --tproxy-mark $MARK
+# UDP port 443 only
 ip6tables -t mangle -A PREROUTING -p udp --dport 443 -j TPROXY --on-port $UDP_INBOUND_PORT --tproxy-mark $MARK
 
 # --- Setup routing rules for marked packets ---
