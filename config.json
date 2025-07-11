@@ -16,7 +16,7 @@
       "type": "tproxy",
       "tag": "tproxy-udp",
       "listen": "0.0.0.0",
-      "listen_port": 15001,
+      "listen_port": 15002,
       "sniff": true,
       "sniff_override_destination": true
     }
