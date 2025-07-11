@@ -47,3 +47,7 @@ USER miniproxy
 # Entrypoint and default command
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["/bin/bash", "/entrypoint.sh"]
+
+# Healthcheck for TCP port 443
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD timeout 2 bash -c "echo > /dev/tcp/127.0.0.1/443" || exit 1
