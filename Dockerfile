@@ -7,6 +7,7 @@ ENV ALLOWED_CLIENTS_FILE=
 ENV DYNDNS_CRON_SCHEDULE="*/1 * * * *"
 
 # Expose necessary ports
+EXPOSE 80/tcp
 EXPOSE 443/tcp
 EXPOSE 443/udp
 
