@@ -24,7 +24,6 @@ function read_acl () {
     fi
   done
 
-  # Add localhost to allowed if any dynamic DNS detected
   if ! printf '%s\n' "${client_list[@]}" | grep -q '127.0.0.1'; then
     if [ "$DYNDNS_CRON_ENABLED" = true ]; then
       echo "[INFO] Adding '127.0.0.1' to allowed clients"
@@ -33,7 +32,7 @@ function read_acl () {
   fi
 }
 
-# Parse clients from env or file
+# Source list from ENV or file
 if [ -n "$ALLOWED_CLIENTS_FILE" ]; then
   if [ -f "$ALLOWED_CLIENTS_FILE" ]; then
     mapfile -t client_list < "$ALLOWED_CLIENTS_FILE"
@@ -47,39 +46,11 @@ fi
 
 read_acl
 
-# Begin writing firewall script
-cat > /etc/miniproxy/acl_firewall.sh <<EOF
-#!/bin/bash
-# Flush existing rules on port 443
-iptables -D INPUT -p tcp --dport 443 -j ACCEPT 2>/dev/null || true
-iptables -D INPUT -p udp --dport 443 -j ACCEPT 2>/dev/null || true
-ip6tables -D INPUT -p tcp --dport 443 -j ACCEPT 2>/dev/null || true
-ip6tables -D INPUT -p udp --dport 443 -j ACCEPT 2>/dev/null || true
-
-# Allow traffic from allowed clients
-EOF
-
+# Write plain IP list for firewall ACL
+mkdir -p /etc/miniproxy
+> /etc/miniproxy/allowed_clients.list
 for ip in "${CLIENTS[@]}"; do
-  if [[ "$ip" =~ : ]]; then
-    # IPv6
-    echo "ip6tables -I INPUT -p tcp -s $ip --dport 443 -j ACCEPT" >> /etc/miniproxy/acl_firewall.sh
-    echo "ip6tables -I INPUT -p udp -s $ip --dport 443 -j ACCEPT" >> /etc/miniproxy/acl_firewall.sh
-  else
-    # IPv4
-    echo "iptables -I INPUT -p tcp -s $ip --dport 443 -j ACCEPT" >> /etc/miniproxy/acl_firewall.sh
-    echo "iptables -I INPUT -p udp -s $ip --dport 443 -j ACCEPT" >> /etc/miniproxy/acl_firewall.sh
-  fi
+  echo "$ip" >> /etc/miniproxy/allowed_clients.list
 done
 
-cat >> /etc/miniproxy/acl_firewall.sh <<EOF
-
-# Drop other traffic to 443
-iptables -A INPUT -p tcp --dport 443 -j DROP
-iptables -A INPUT -p udp --dport 443 -j DROP
-
-echo "[INFO] Firewall ACL rules applied."
-EOF
-
-chmod +x /etc/miniproxy/acl_firewall.sh
-
-echo "[INFO] Firewall ACL script generated at /etc/miniproxy/acl_firewall.sh"
+echo "[INFO] Wrote ACL to /etc/miniproxy/allowed_clients.list"
