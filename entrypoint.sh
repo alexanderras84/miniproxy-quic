@@ -12,4 +12,5 @@ if [ "$DYNDNS_CRON_ENABLED" = true ]; then
 fi
 
 echo "[INFO] Starting sing-box..."
-sing-box run -c /etc/sing-box/config.json
+sing-box run -c /etc/sing-box/config.json &
+wait
