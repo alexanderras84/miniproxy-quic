@@ -45,26 +45,44 @@ fi
 
 read_acl
 
-# Generate sing-box ACL JSON
-cat <<EOF > /etc/sing-box/acl.json
+# Generate ACL JSON IP array for routing rule
+ROUTING_IPS=""
+for ip in "${CLIENTS[@]}"; do
+  ROUTING_IPS+="\"$ip\","
+done
+# Remove trailing comma
+ROUTING_IPS=${ROUTING_IPS%,}
+
+# Generate full config.json dynamically with routing rules from ACL
+cat > /etc/sing-box/config.json <<EOF
 {
-  "routing": {
+  "log": {
+    "level": "info",
+    "timestamp": true
+  },
+  "inbounds": [
+    {
+      "type": "mixed",
+      "tag": "forwarder",
+      "listen": "0.0.0.0",
+      "listen_port": 443,
+      "sniff": true,
+      "sniff_override_destination": true,
+      "udp_fragment": true
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ],
+  "route": {
     "rules": [
       {
         "type": "field",
         "ip": [
-EOF
-
-# Output each IP in JSON array format with quotes and commas
-for ip in "${CLIENTS[@]}"; do
-  echo "          \"$ip\"," >> /etc/sing-box/acl.json
-done
-
-# Remove trailing comma from last IP by editing the file
-sed -i '$ s/,$//' /etc/sing-box/acl.json
-
-# Finish JSON
-cat <<EOF >> /etc/sing-box/acl.json
+          $ROUTING_IPS
         ],
         "outboundTag": "direct"
       }
@@ -73,4 +91,4 @@ cat <<EOF >> /etc/sing-box/acl.json
 }
 EOF
 
-echo "[INFO] sing-box ACL JSON generated at /etc/sing-box/acl.json"
+echo "[INFO] sing-box config.json generated at /etc/sing-box/config.json"
