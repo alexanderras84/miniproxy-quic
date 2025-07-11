@@ -1,24 +1,21 @@
 #!/bin/bash -e
 
-echo "[INFO] [Entrypoint] Generating ACL and firewall rules..."
+echo "[INFO] Generating ACL and applying firewall rules..."
 
-# Run ACL and firewall setup
+# Generate allowed client list
 set +e
 /bin/bash /generateACL.sh
-retVal=$?
 set -e
 
-if [ $retVal -ne 0 ]; then
-  echo "[ERROR] [Entrypoint] generateACL.sh failed (exit code $retVal)!"
-  exit $retVal
-fi
+# Apply firewall rules using that list
+/bin/bash /acl_firewall.sh
 
-# If DynDNS entries were detected, start cron job
+# If dynamic DNS was used, start cron refresh loop
 if [ "$DYNDNS_CRON_ENABLED" = true ]; then
-  echo "[INFO] [Entrypoint] DynDNS detected — enabling cron job..."
+  echo "[INFO] DynDNS detected — enabling cron job"
   echo "$DYNDNS_CRON_SCHEDULE /bin/bash /dynDNSCron.sh" > /etc/miniproxy/dyndns.cron
   supercronic /etc/miniproxy/dyndns.cron &
 fi
 
-echo "[INFO] [Entrypoint] Starting sing-box..."
+echo "[INFO] Starting sing-box..."
 exec sing-box run -c /etc/sing-box/config.json
