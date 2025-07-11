@@ -32,7 +32,6 @@ RUN addgroup miniproxy && adduser -D -H -G miniproxy miniproxy
 RUN mkdir -p /etc/miniproxy/ && mkdir -p /etc/sing-box/
 
 # Copy project files
-COPY config.json /etc/sing-box/config.json
 COPY entrypoint.sh /entrypoint.sh
 COPY generateACL.sh /generateACL.sh
 COPY dynDNSCron.sh /dynDNSCron.sh
