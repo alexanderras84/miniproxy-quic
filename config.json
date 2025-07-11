@@ -11,26 +11,24 @@
   },
   "inbounds": [
     {
-      "type": "mixed",
-      "tag": "forwarder-tcp-443",
+      "type": "transparent",
+      "tag": "forwarder-443",
       "listen": "0.0.0.0",
       "listen_port": 443,
       "sniff": true,
-      "sniff_override_destination": true
+      "sniff_override_destination": true,
+      "udp": true,
+      "udp_fragment": true
     },
     {
-      "type": "quic",
-      "tag": "forwarder-quic-443",
-      "listen": "0.0.0.0",
-      "listen_port": 443
-    },
-    {
-      "type": "mixed",
-      "tag": "forwarder-tcp-80",
+      "type": "transparent",
+      "tag": "forwarder-80",
       "listen": "0.0.0.0",
       "listen_port": 80,
       "sniff": true,
-      "sniff_override_destination": true
+      "sniff_override_destination": true,
+      "udp": true,
+      "udp_fragment": true
     }
   ],
   "outbounds": [
@@ -42,7 +40,7 @@
   "route": {
     "rules": [
       {
-        "inbound": ["forwarder-tcp-443", "forwarder-quic-443", "forwarder-tcp-80"],
+        "inbound": ["forwarder-443", "forwarder-80"],
         "outbound": "direct"
       }
     ]
