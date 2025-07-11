@@ -1,5 +1,6 @@
 FROM alpine:3.20
 ARG TARGETPLATFORM
+ARG SINGBOX_VERSION=1.12.0-beta.33
 
 # Environment variables
 ENV ALLOWED_CLIENTS=127.0.0.1
@@ -14,17 +15,20 @@ EXPOSE 443/udp
 # Print target platform info
 RUN echo "I'm building for $TARGETPLATFORM"
 
-# Add testing repo for sing-box
-RUN echo "@testing https://dl-cdn.alpinelinux.org/alpine/edge/testing" >> /etc/apk/repositories
-
-# Install required packages
+# Install required packages (excluding sing-box)
 RUN apk update && apk upgrade && \
     apk add --no-cache \
         jq tini curl bash gnupg procps ca-certificates openssl \
         dog lua5.4-filesystem ipcalc libcap \
         supercronic step-cli bind-tools \
-        sing-box@testing iptables ip6tables ipset && \
+        iptables ip6tables ipset unzip && \
     rm -rf /var/cache/apk/*
+
+# Install sing-box manually from GitHub
+RUN curl -fsSL "https://github.com/SagerNet/sing-box/releases/download/v${SINGBOX_VERSION}/sing-box-linux-amd64.zip" -o /tmp/sing-box.zip && \
+    unzip /tmp/sing-box.zip -d /usr/local/bin && \
+    chmod +x /usr/local/bin/sing-box && \
+    rm /tmp/sing-box.zip
 
 # Create non-root user and groups
 RUN addgroup miniproxy && adduser -D -H -G miniproxy miniproxy
@@ -48,6 +52,6 @@ RUN chown -R miniproxy:miniproxy /etc/sing-box/ /etc/miniproxy/ && \
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["/bin/bash", "/entrypoint.sh"]
 
-# Healthcheck for TCP port 443
+# Healthcheck for TCP port 443 (optional)
 # HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 #  CMD timeout 2 bash -c "echo > /dev/tcp/127.0.0.1/443" || exit 1
