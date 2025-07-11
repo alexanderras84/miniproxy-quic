@@ -23,7 +23,6 @@
   "route": {
     "rules": [
       {
-        "type": "field",
         "inbound": ["forwarder"],
         "outbound": "direct"
       }
