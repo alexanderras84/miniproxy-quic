@@ -1,16 +1,15 @@
 #!/bin/bash -e
 
-echo "[INFO] Generating ACL..."
+echo "[INFO] Generating ACL and config..."
 set +e
-source generateACL.sh
+/bin/bash /generateACL.sh
 set -e
 
 if [ "$DYNDNS_CRON_ENABLED" = true ]; then
-  echo "[INFO] DynDNS Address in ALLOWED_CLIENTS detected => Enable cron job"
+  echo "[INFO] DynDNS detected — enabling cron job"
   echo "$DYNDNS_CRON_SCHEDULE /bin/bash /dynDNSCron.sh" > /etc/miniproxy/dyndns.cron
   supercronic /etc/miniproxy/dyndns.cron &
 fi
 
 echo "[INFO] Starting sing-box..."
-sing-box run -c /etc/sing-box/config.json &
-wait
+sing-box run -c /etc/sing-box/config.json
