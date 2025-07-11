@@ -3,8 +3,10 @@
 echo "[INFO] Generating ACL..."
 set +e
 /bin/bash /generateACL.sh
-/bin/bash /acl_firewall.sh
 set -e
+
+echo "[INFO] Applying initial firewall rules..."
+/bin/bash /acl_firewall.sh
 
 if [ "$DYNDNS_CRON_ENABLED" = true ]; then
   echo "[INFO] DynDNS detected — enabling cron job"
