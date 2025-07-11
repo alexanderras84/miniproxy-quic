@@ -1,27 +1,45 @@
 #!/bin/bash
 
-CHAIN="MINIPROXY_ACL"
-PORT=443
+ACL_FILE="/etc/miniproxy/allowed_clients.list"
+CHAIN_NAME="ACL-ALLOW"
 
-# Flush or create chain
-iptables -N $CHAIN 2>/dev/null || iptables -F $CHAIN
+echo "[INFO] Applying firewall rules from $ACL_FILE..."
 
-# Whitelist allowed IPs (from /etc/miniproxy/allowed_clients.list)
-if [ -f /etc/miniproxy/allowed_clients.list ]; then
-  while read -r ip; do
-    [ -n "$ip" ] && iptables -A $CHAIN -s "$ip" -p tcp --dport $PORT -j ACCEPT
-    [ -n "$ip" ] && iptables -A $CHAIN -s "$ip" -p udp --dport $PORT -j ACCEPT
-  done < /etc/miniproxy/allowed_clients.list
+# Ensure iptables is available
+if ! command -v iptables >/dev/null 2>&1; then
+  echo "[ERROR] iptables not found. Cannot apply firewall rules."
+  exit 1
 fi
 
-# Drop others
-iptables -A $CHAIN -p tcp --dport $PORT -j DROP
-iptables -A $CHAIN -p udp --dport $PORT -j DROP
+# Create custom chain if it doesn't exist
+iptables -nL $CHAIN_NAME >/dev/null 2>&1
+if [ $? -ne 0 ]; then
+  iptables -N $CHAIN_NAME
+  echo "[INFO] Created iptables chain $CHAIN_NAME"
+fi
 
-# Ensure chain is hooked into INPUT
-iptables -D INPUT -p tcp --dport $PORT -j $CHAIN 2>/dev/null
-iptables -D INPUT -p udp --dport $PORT -j $CHAIN 2>/dev/null
-iptables -I INPUT -p tcp --dport $PORT -j $CHAIN
-iptables -I INPUT -p udp --dport $PORT -j $CHAIN
+# Flush old rules
+iptables -F $CHAIN_NAME
 
-echo "[INFO] ACL firewall rules applied to port $PORT"
+# Add allowed IPs
+if [ -s "$ACL_FILE" ]; then
+  while read -r ip; do
+    [ -n "$ip" ] && iptables -A $CHAIN_NAME -s "$ip" -p tcp --dport 443 -j ACCEPT
+    [ -n "$ip" ] && iptables -A $CHAIN_NAME -s "$ip" -p udp --dport 443 -j ACCEPT
+  done < "$ACL_FILE"
+else
+  echo "[WARN] ACL file is empty or missing — no allow rules applied."
+fi
+
+# Add default deny rule
+iptables -A $CHAIN_NAME -p tcp --dport 443 -j DROP
+iptables -A $CHAIN_NAME -p udp --dport 443 -j DROP
+
+# Attach chain to INPUT if not already attached
+iptables -C INPUT -j $CHAIN_NAME >/dev/null 2>&1
+if [ $? -ne 0 ]; then
+  iptables -I INPUT -j $CHAIN_NAME
+  echo "[INFO] Attached $CHAIN_NAME to INPUT chain"
+fi
+
+echo "[INFO] Firewall ACL rules applied."
