@@ -5,8 +5,8 @@
   },
   "inbounds": [
     {
-      "type": "tproxy",
-      "tag": "tproxy-tcp",
+      "type": "redirect",
+      "tag": "redir-tcp",
       "listen": "0.0.0.0",
       "listen_port": 15001,
       "network": "tcp",
@@ -32,7 +32,6 @@
   "route": {
     "rules": [
       {
-        "type": "field",
         "ip": ["geoip:private"],
         "outbound": "direct"
       }
