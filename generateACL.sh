@@ -32,7 +32,6 @@ function read_acl () {
   fi
 }
 
-# Source list from ENV or file
 if [ -n "$ALLOWED_CLIENTS_FILE" ]; then
   if [ -f "$ALLOWED_CLIENTS_FILE" ]; then
     mapfile -t client_list < "$ALLOWED_CLIENTS_FILE"
@@ -46,11 +45,30 @@ fi
 
 read_acl
 
-# Write plain IP list for firewall ACL
-mkdir -p /etc/miniproxy
-> /etc/miniproxy/allowed_clients.list
+# Generate ACL JSON IP array for routing rule
+cat > /etc/sing-box/acl.json <<EOF
+{
+  "routing": {
+    "rules": [
+      {
+        "type": "field",
+        "ip": [
+EOF
+
 for ip in "${CLIENTS[@]}"; do
-  echo "$ip" >> /etc/miniproxy/allowed_clients.list
+  echo "          \"$ip\"," >> /etc/sing-box/acl.json
 done
 
-echo "[INFO] Wrote ACL to /etc/miniproxy/allowed_clients.list"
+# Remove trailing comma
+sed -i '$ s/,$//' /etc/sing-box/acl.json
+
+cat >> /etc/sing-box/acl.json <<EOF
+        ],
+        "outboundTag": "direct"
+      }
+    ]
+  }
+}
+EOF
+
+echo "[INFO] sing-box ACL JSON generated at /etc/sing-box/acl.json"
