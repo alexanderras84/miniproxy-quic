@@ -6,10 +6,21 @@
   "inbounds": [
     {
       "type": "tproxy",
-      "tag": "tproxy-in",
+      "tag": "tproxy-tcp",
       "listen": "0.0.0.0",
       "listen_port": 15001,
-      "network": "tcp,udp"
+      "network": "tcp",
+      "sniff": {
+        "enabled": true,
+        "dest_override": ["http", "tls"]
+      }
+    },
+    {
+      "type": "tproxy",
+      "tag": "tproxy-udp",
+      "listen": "0.0.0.0",
+      "listen_port": 15001,
+      "network": "udp"
     }
   ],
   "outbounds": [
@@ -33,7 +44,7 @@
       },
       {
         "type": "field",
-        "inbound": ["tproxy-in"],
+        "inbound": ["tproxy-tcp", "tproxy-udp"],
         "ip": [],
         "outbound": "blocked"
       }
