@@ -11,7 +11,7 @@
   },
   "inbounds": [
     {
-      "type": "forward",
+      "type": "mixed",
       "tag": "forwarder-tcp-443",
       "listen": "0.0.0.0",
       "listen_port": 443,
@@ -25,7 +25,7 @@
       "listen_port": 443
     },
     {
-      "type": "forward",
+      "type": "mixed",
       "tag": "forwarder-tcp-80",
       "listen": "0.0.0.0",
       "listen_port": 80,
