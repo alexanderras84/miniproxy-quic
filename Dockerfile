@@ -15,20 +15,19 @@ EXPOSE 443/udp
 # Print target platform info
 RUN echo "I'm building for $TARGETPLATFORM"
 
-# Install required packages (excluding sing-box)
+# Install required packages
 RUN apk update && apk upgrade && \
     apk add --no-cache \
         jq tini curl bash gnupg procps ca-certificates openssl \
         dog lua5.4-filesystem ipcalc libcap \
         supercronic step-cli bind-tools \
-        iptables ip6tables ipset unzip && \
+        iptables ip6tables ipset iproute2 unzip && \
     rm -rf /var/cache/apk/*
 
-# Install sing-box manually
+# Install sing-box
 RUN curl -fSL "https://github.com/SagerNet/sing-box/releases/download/v${SINGBOX_VERSION}/sing-box-${SINGBOX_VERSION}-linux-amd64.tar.gz" \
     -o /tmp/sing-box.tar.gz && \
-    mkdir -p /tmp/sing-box && \
-    tar -xzf /tmp/sing-box.tar.gz -C /tmp/sing-box --strip-components=1 && \
+    tar -xzf /tmp/sing-box.tar.gz -C /tmp && \
     install -m 755 /tmp/sing-box/sing-box /usr/local/bin/sing-box && \
     rm -rf /tmp/sing-box /tmp/sing-box.tar.gz
 
@@ -38,22 +37,19 @@ RUN addgroup miniproxy && adduser -D -H -G miniproxy miniproxy
 # Create config directories
 RUN mkdir -p /etc/miniproxy/ /etc/sing-box/
 
-# Copy static config and scripts
+# Copy config and scripts
 COPY config.json /etc/sing-box/config.json
 COPY entrypoint.sh /entrypoint.sh
 COPY generateACL.sh /generateACL.sh
 COPY dynDNSCron.sh /dynDNSCron.sh
 COPY acl_firewall.sh /acl_firewall.sh
+COPY transparent_routing.sh /transparent_routing.sh
 
-# Set ownership and execution permissions
+# Set ownership and permissions
 RUN chown -R miniproxy:miniproxy /etc/sing-box/ /etc/miniproxy/ && \
-    chown miniproxy:miniproxy /entrypoint.sh /generateACL.sh /dynDNSCron.sh /acl_firewall.sh && \
-    chmod +x /entrypoint.sh /generateACL.sh /dynDNSCron.sh /acl_firewall.sh
+    chown miniproxy:miniproxy /entrypoint.sh /generateACL.sh /dynDNSCron.sh /acl_firewall.sh /transparent_routing.sh && \
+    chmod +x /entrypoint.sh /generateACL.sh /dynDNSCron.sh /acl_firewall.sh /transparent_routing.sh
 
-# Entrypoint and default command
+# Entrypoint
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["/bin/bash", "/entrypoint.sh"]
-
-# Healthcheck for TCP port 443 (optional)
-# HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-#  CMD timeout 2 bash -c "echo > /dev/tcp/127.0.0.1/443" || exit 1
