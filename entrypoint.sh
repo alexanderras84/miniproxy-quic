@@ -3,6 +3,7 @@
 echo "[INFO] Generating ACL..."
 set +e
 /bin/bash /generateACL.sh
+/bin/bash /acl_firewall.sh
 set -e
 
 if [ "$DYNDNS_CRON_ENABLED" = true ]; then
