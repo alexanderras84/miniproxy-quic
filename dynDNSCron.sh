@@ -11,20 +11,14 @@ if [ $retVal -eq 124 ]; then
 elif [ $retVal -ne 0 ]; then
   echo "[ERROR] [DynDNSCron] generateACL.sh failed with exit code $retVal!"
   exit 1
+fi
+
+echo "[INFO] [DynDNSCron] ACL successfully regenerated."
+
+# Apply new firewall ACL rules
+if /etc/miniproxy/acl_firewall.sh; then
+  echo "[INFO] [DynDNSCron] Firewall ACL rules applied successfully."
 else
-  echo "[INFO] [DynDNSCron] ACL successfully regenerated."
-
-  echo "[INFO] [DynDNSCron] Restarting sing-box to apply new ACL..."
-
-  # Gracefully stop existing sing-box instances (send SIGTERM)
-  pkill -f 'sing-box run'
-
-  # Wait a moment for graceful shutdown
-  sleep 2
-
-  # Start sing-box in background as the miniproxy user (optional, if needed)
-  # If running as root in container, you might want: su-exec miniproxy sing-box ...
-  sing-box run -c /etc/sing-box/config.json &
-
-  echo "[INFO] [DynDNSCron] sing-box restarted."
+  echo "[ERROR] [DynDNSCron] Failed to apply firewall ACL rules!"
+  exit 1
 fi
