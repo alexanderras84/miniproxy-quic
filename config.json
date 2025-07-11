@@ -12,7 +12,7 @@
       "network": "tcp",
       "sniff": {
         "enabled": true,
-        "dest_override": ["http", "tls"]
+        "dest_override": ["http", "tls", "quic"]
       }
     },
     {
@@ -27,10 +27,6 @@
     {
       "type": "direct",
       "tag": "direct"
-    },
-    {
-      "type": "block",
-      "tag": "blocked"
     }
   ],
   "route": {
@@ -41,12 +37,6 @@
           "geoip:private"
         ],
         "outbound": "direct"
-      },
-      {
-        "type": "field",
-        "inbound": ["tproxy-tcp", "tproxy-udp"],
-        "ip": [],
-        "outbound": "blocked"
       }
     ],
     "auto_detect_interface": true
