@@ -3,18 +3,18 @@ CLIENTS=()
 export DYNDNS_CRON_ENABLED=false
 
 function read_acl () {
-  for i in "${client_list[@]}"
-  do
+  for i in "${client_list[@]}"; do
     if timeout 15s /usr/bin/ipcalc -cs "$i" >/dev/null 2>&1; then
       CLIENTS+=( "$i" )
     else
-      RESOLVE_IPV4_LIST=$(timeout 5s /usr/bin/dig +short "$i" A 2>/dev/null)
-      RESOLVE_IPV6_LIST=$(timeout 5s /usr/bin/dig +short "$i" AAAA 2>/dev/null)
+      RESOLVE_IPV4_LIST=$(timeout 5s dig +short "$i" A 2>/dev/null)
+      RESOLVE_IPV6_LIST=$(timeout 5s dig +short "$i" AAAA 2>/dev/null)
 
       if [ -n "$RESOLVE_IPV4_LIST" ] || [ -n "$RESOLVE_IPV6_LIST" ]; then
         while read -r ip4; do
           [ -n "$ip4" ] && CLIENTS+=( "$ip4" ) && DYNDNS_CRON_ENABLED=true
         done <<< "$RESOLVE_IPV4_LIST"
+
         while read -r ip6; do
           [ -n "$ip6" ] && CLIENTS+=( "$ip6" ) && DYNDNS_CRON_ENABLED=true
         done <<< "$RESOLVE_IPV6_LIST"
@@ -24,7 +24,7 @@ function read_acl () {
     fi
   done
 
-  if ! printf '%s\n' "${client_list[@]}" | grep -q '127.0.0.1'; then
+  if ! printf '%s\n' "${CLIENTS[@]}" | grep -q '127.0.0.1'; then
     if [ "$DYNDNS_CRON_ENABLED" = true ]; then
       echo "[INFO] Adding '127.0.0.1' to allowed clients"
       CLIENTS+=( "127.0.0.1" )
@@ -32,6 +32,7 @@ function read_acl () {
   fi
 }
 
+# Load client list
 if [ -n "$ALLOWED_CLIENTS_FILE" ]; then
   if [ -f "$ALLOWED_CLIENTS_FILE" ]; then
     mapfile -t client_list < "$ALLOWED_CLIENTS_FILE"
@@ -45,15 +46,10 @@ fi
 
 read_acl
 
-# Generate ACL JSON IP array for routing rule
-ROUTING_IPS=""
-for ip in "${CLIENTS[@]}"; do
-  ROUTING_IPS+="\"$ip\","
-done
-# Remove trailing comma
-ROUTING_IPS=${ROUTING_IPS%,}
+# Assemble quoted IPs list
+ROUTING_IPS=$(printf '"%s",\n' "${CLIENTS[@]}" | sed '$s/,$//')
 
-# Generate full config.json dynamically with routing rules from ACL
+# Generate full config
 cat > /etc/sing-box/config.json <<EOF
 {
   "log": {
