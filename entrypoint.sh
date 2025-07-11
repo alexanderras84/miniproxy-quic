@@ -8,9 +8,6 @@ set -e
 echo "[INFO] Applying initial firewall rules..."
 /bin/bash /acl_firewall.sh
 
-echo "[INFO] Applying transparent proxy routing rules..."
-/bin/bash /transparent_routing.sh
-
 if [ "$DYNDNS_CRON_ENABLED" = true ]; then
   echo "[INFO] DynDNS detected — enabling cron job"
   echo "$DYNDNS_CRON_SCHEDULE /bin/bash /dynDNSCron.sh" > /etc/miniproxy/dyndns.cron
