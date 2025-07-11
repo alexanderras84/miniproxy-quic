@@ -27,7 +27,7 @@ RUN apk update && apk upgrade && \
     rm -rf /var/cache/apk/*
 
 # Build sing-box from the dev branch
-RUN git clone --branch dev --depth 1 https://github.com/SagerNet/sing-box.git /src/sing-box && \
+RUN git clone --branch dev-next --depth 1 https://github.com/SagerNet/sing-box.git /src/sing-box && \
     cd /src/sing-box && \
     go build -o /usr/local/bin/sing-box ./cmd/sing-box && \
     strip /usr/local/bin/sing-box && \
