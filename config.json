@@ -5,24 +5,25 @@
   },
   "dns": {
     "servers": [
-      "8.8.8.8",
-      "8.8.4.4"
+      { "address": "8.8.8.8" },
+      { "address": "8.8.4.4" }
     ]
   },
   "inbounds": [
     {
-      "type": "http",
-      "tag": "http_forwarder",
+      "type": "mixed",
+      "tag": "forwarder-tcp-443",
       "listen": "0.0.0.0",
-      "listen_port": 80,
-      "allow_transparent": true,
-      "domain_strategy": "prefer_ipv4"
+      "listen_port": 443,
+      "sniff": true,
+      "sniff_override_destination": true,
+      "udp_fragment": true
     },
     {
       "type": "mixed",
-      "tag": "forwarder",
+      "tag": "forwarder-tcp-80",
       "listen": "0.0.0.0",
-      "listen_port": 443,
+      "listen_port": 80,
       "sniff": true,
       "sniff_override_destination": true,
       "udp_fragment": true
@@ -37,26 +38,9 @@
   "route": {
     "rules": [
       {
-        "inbound": ["forwarder", "http_forwarder"],
+        "inbound": ["forwarder-tcp-443", "forwarder-tcp-80"],
         "outbound": "direct"
       }
     ]
-  },
-  "policy": {
-    "levels": {
-      "0": {
-        "handshake": 4,
-        "connIdle": 300,
-        "uplinkOnly": 2,
-        "downlinkOnly": 5,
-        "statsUserUplink": true,
-        "statsUserDownlink": true,
-        "bufferSize": 10240
-      }
-    },
-    "system": {
-      "statsInboundUplink": true,
-      "statsInboundDownlink": true
-    }
   }
 }
