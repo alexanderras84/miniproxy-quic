@@ -1,7 +1,6 @@
 #!/bin/bash
-echo "[INFO] [DynDNSCron] Regenerating ACL.."
+echo "[INFO] [DynDNSCron] Regenerating ACL and config..."
 
-# Apply timeout to the generateACL.sh script (5 seconds or adjust as needed)
 timeout 40s /bin/bash /generateACL.sh
 retVal=$?
 if [ $retVal -eq 124 ]; then
@@ -9,11 +8,7 @@ if [ $retVal -eq 124 ]; then
 elif [ $retVal -ne 0 ]; then
   echo "[ERROR] [DynDNSCron] generateACL.sh failed with exit code $retVal!"
 else
-  echo "[INFO] [DynDNSCron] ACL regenerated!"
+  echo "[INFO] [DynDNSCron] ACL and config regenerated!"
 fi
 
-echo "[INFO] [DynDNSCron] restarting sing-box..."
-pkill -f 'sing-box run'
-sleep 2
-sing-box run -c /etc/sing-box/config.json &
-echo "[INFO] [DynDNSCron] sing-box restarted"
+echo "[INFO] [DynDNSCron] Please restart sing-box to apply changes."
