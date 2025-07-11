@@ -12,6 +12,8 @@ else
   echo "[INFO] [DynDNSCron] ACL regenerated!"
 fi
 
-echo "[INFO] [DynDNSCron] reloading nginx..."
-timeout 10s /usr/sbin/nginx -s reload
-echo "[INFO] [DynDNSCron] nginx successfully reloaded"
+echo "[INFO] [DynDNSCron] restarting sing-box..."
+pkill -f 'sing-box run'
+sleep 2
+sing-box run -c /etc/sing-box/config.json &
+echo "[INFO] [DynDNSCron] sing-box restarted"
