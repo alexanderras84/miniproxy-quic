@@ -19,5 +19,13 @@
       "type": "direct",
       "tag": "direct"
     }
-  ]
+  ],
+  "route": {
+    "rules": [
+      {
+        "inbound": ["forwarder"],
+        "outbound": "direct"
+      }
+    ]
+  }
 }
