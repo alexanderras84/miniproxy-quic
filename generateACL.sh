@@ -8,9 +8,7 @@ function read_acl () {
     if timeout 15s /usr/bin/ipcalc -cs "$i" >/dev/null 2>&1; then
       CLIENTS+=( "$i" )
     else
-      # Resolve A records (IPv4)
       RESOLVE_IPV4_LIST=$(timeout 5s /usr/bin/dig +short "$i" A 2>/dev/null)
-      # Resolve AAAA records (IPv6)
       RESOLVE_IPV6_LIST=$(timeout 5s /usr/bin/dig +short "$i" AAAA 2>/dev/null)
 
       if [ -n "$RESOLVE_IPV4_LIST" ] || [ -n "$RESOLVE_IPV6_LIST" ]; then
@@ -21,44 +19,58 @@ function read_acl () {
           [ -n "$ip6" ] && CLIENTS+=( "$ip6" ) && DYNDNS_CRON_ENABLED=true
         done <<< "$RESOLVE_IPV6_LIST"
       else
-        echo "[ERROR] Could not resolve A or AAAA records for '$i' (timeout or failure) => Skipping"
+        echo "[ERROR] Could not resolve A or AAAA records for '$i' => Skipping"
       fi
     fi
   done
 
-  # Ensure 127.0.0.1 is present if dynamic DNS clients were resolved
   if ! printf '%s\n' "${client_list[@]}" | grep -q '127.0.0.1'; then
     if [ "$DYNDNS_CRON_ENABLED" = true ]; then
-      echo "[INFO] Adding '127.0.0.1' to allowed clients to prevent reload issues"
+      echo "[INFO] Adding '127.0.0.1' to allowed clients"
       CLIENTS+=( "127.0.0.1" )
     fi
   fi
 }
 
-# Determine client list source
 if [ -n "$ALLOWED_CLIENTS_FILE" ]; then
   if [ -f "$ALLOWED_CLIENTS_FILE" ]; then
     mapfile -t client_list < "$ALLOWED_CLIENTS_FILE"
   else
-    echo "[ERROR] ALLOWED_CLIENTS_FILE is set but file does not exist or is not accessible!"
+    echo "[ERROR] ALLOWED_CLIENTS_FILE is set but file missing!"
     exit 1
   fi
 else
   IFS=', ' read -ra client_list <<< "$ALLOWED_CLIENTS"
 fi
 
-# Run ACL generation
 read_acl
 
-# Generate NGINX ACL files
-printf '%s\n' "${CLIENTS[@]}" > /etc/nginx/allowedClients.acl
+# Generate sing-box ACL JSON
+cat <<EOF > /etc/sing-box/acl.json
+{
+  "routing": {
+    "rules": [
+      {
+        "type": "field",
+        "ip": [
+EOF
 
-if [ -s /etc/nginx/allowedClients.acl ]; then
-  : > /etc/nginx/allowedClients.conf
-  while read -r line; do
-    echo "allow $line;" >> /etc/nginx/allowedClients.conf
-  done < /etc/nginx/allowedClients.acl
-  echo "deny all;" >> /etc/nginx/allowedClients.conf
-else
-  touch /etc/nginx/allowedClients.conf
-fi
+# Output each IP in JSON array format with quotes and commas
+for ip in "${CLIENTS[@]}"; do
+  echo "          \"$ip\"," >> /etc/sing-box/acl.json
+done
+
+# Remove trailing comma from last IP by editing the file
+sed -i '$ s/,$//' /etc/sing-box/acl.json
+
+# Finish JSON
+cat <<EOF >> /etc/sing-box/acl.json
+        ],
+        "outboundTag": "direct"
+      }
+    ]
+  }
+}
+EOF
+
+echo "[INFO] sing-box ACL JSON generated at /etc/sing-box/acl.json"
