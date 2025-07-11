@@ -22,7 +22,7 @@ RUN apk update && apk upgrade && \
         jq tini curl bash gnupg procps ca-certificates openssl \
         dog lua5.4-filesystem ipcalc libcap \
         supercronic step-cli bind-tools \
-        sing-box@testing && \
+        sing-box@testing iptables ip6tables ipset && \
     rm -rf /var/cache/apk/*
 
 # Create non-root user and groups
@@ -36,10 +36,12 @@ COPY config.json /etc/sing-box/config.json
 COPY entrypoint.sh /entrypoint.sh
 COPY generateACL.sh /generateACL.sh
 COPY dynDNSCron.sh /dynDNSCron.sh
+COPY acl_firewall.sh /acl_firewall.sh
 
 # Set ownership and execution permissions
 RUN chown -R miniproxy:miniproxy /etc/sing-box/ /etc/miniproxy/ && \
-    chmod +x /entrypoint.sh /generateACL.sh /dynDNSCron.sh
+    chown miniproxy:miniproxy /entrypoint.sh /generateACL.sh /dynDNSCron.sh /acl_firewall.sh && \
+    chmod +x /entrypoint.sh /generateACL.sh /dynDNSCron.sh /acl_firewall.sh
 
 # Switch to non-root user
 USER miniproxy
