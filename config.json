@@ -3,7 +3,21 @@
     "level": "info",
     "timestamp": true
   },
+  "dns": {
+    "servers": [
+      "8.8.8.8",
+      "8.8.4.4"
+    ]
+  },
   "inbounds": [
+    {
+      "type": "http",
+      "tag": "http_forwarder",
+      "listen": "0.0.0.0",
+      "listen_port": 80,
+      "allow_transparent": true,
+      "domain_strategy": "prefer_ipv4"
+    },
     {
       "type": "mixed",
       "tag": "forwarder",
@@ -23,9 +37,26 @@
   "route": {
     "rules": [
       {
-        "inbound": ["forwarder"],
+        "inbound": ["forwarder", "http_forwarder"],
         "outbound": "direct"
       }
     ]
+  },
+  "policy": {
+    "levels": {
+      "0": {
+        "handshake": 4,
+        "connIdle": 300,
+        "uplinkOnly": 2,
+        "downlinkOnly": 5,
+        "statsUserUplink": true,
+        "statsUserDownlink": true,
+        "bufferSize": 10240
+      }
+    },
+    "system": {
+      "statsInboundUplink": true,
+      "statsInboundDownlink": true
+    }
   }
 }
