@@ -28,8 +28,8 @@ RUN apk update && apk upgrade && \
 RUN curl -fSL "https://github.com/SagerNet/sing-box/releases/download/v${SINGBOX_VERSION}/sing-box-${SINGBOX_VERSION}-linux-amd64.tar.gz" \
     -o /tmp/sing-box.tar.gz && \
     tar -xzf /tmp/sing-box.tar.gz -C /tmp && \
-    install -m 755 /tmp/sing-box/sing-box /usr/local/bin/sing-box && \
-    rm -rf /tmp/sing-box /tmp/sing-box.tar.gz
+    install -m 755 /tmp/sing-box*/sing-box /usr/local/bin/sing-box && \
+    rm -rf /tmp/sing-box* /tmp/sing-box.tar.gz
 
 # Create non-root user and groups
 RUN addgroup miniproxy && adduser -D -H -G miniproxy miniproxy
