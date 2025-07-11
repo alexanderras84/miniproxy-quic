@@ -12,7 +12,7 @@
   "inbounds": [
     {
       "type": "mixed",
-      "tag": "forwarder-tcp-443",
+      "tag": "forwarder-443",
       "listen": "0.0.0.0",
       "listen_port": 443,
       "sniff": true,
@@ -21,7 +21,7 @@
     },
     {
       "type": "mixed",
-      "tag": "forwarder-tcp-80",
+      "tag": "forwarder-80",
       "listen": "0.0.0.0",
       "listen_port": 80,
       "sniff": true,
@@ -38,7 +38,7 @@
   "route": {
     "rules": [
       {
-        "inbound": ["forwarder-tcp-443", "forwarder-tcp-80"],
+        "inbound": ["forwarder-443", "forwarder-80"],
         "outbound": "direct"
       }
     ]
