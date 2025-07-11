@@ -5,14 +5,14 @@
   },
   "dns": {
     "servers": [
-      { "address": "8.8.8.8" },
-      { "address": "8.8.4.4" }
+      { "type": "udp", "server": "8.8.8.8" },
+      { "type": "udp", "server": "8.8.4.4" }
     ]
   },
   "inbounds": [
     {
-      "type": "forward",
-      "tag": "forwarder-tcp-443",
+      "type": "redirect",
+      "tag": "redirect-tcp-443",
       "listen": "0.0.0.0",
       "listen_port": 443,
       "network": "tcp",
@@ -20,18 +20,20 @@
       "sniff_override_destination": true
     },
     {
-      "type": "forward",
-      "tag": "forwarder-quic-443",
-      "listen": "0.0.0.0",
-      "listen_port": 443,
-      "network": "udp"
-    },
-    {
-      "type": "forward",
-      "tag": "forwarder-tcp-80",
+      "type": "redirect",
+      "tag": "redirect-tcp-80",
       "listen": "0.0.0.0",
       "listen_port": 80,
       "network": "tcp",
+      "sniff": true,
+      "sniff_override_destination": true
+    },
+    {
+      "type": "tproxy",
+      "tag": "tproxy-udp-443",
+      "listen": "0.0.0.0",
+      "listen_port": 443,
+      "network": "udp",
       "sniff": true,
       "sniff_override_destination": true
     }
@@ -46,9 +48,9 @@
     "rules": [
       {
         "inbound": [
-          "forwarder-tcp-443",
-          "forwarder-quic-443",
-          "forwarder-tcp-80"
+          "redirect-tcp-443",
+          "redirect-tcp-80",
+          "tproxy-udp-443"
         ],
         "outbound": "direct"
       }
