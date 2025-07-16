@@ -77,6 +77,13 @@ else
   ip6tables -t mangle -N ACL-ALLOW
 fi
 
+# --- PRIORITY: Allow DNS from host (global rule) ---
+iptables -t mangle -I ACL-ALLOW 1 -p udp --dport 53 -j RETURN
+iptables -t mangle -I ACL-ALLOW 2 -p tcp --dport 53 -j RETURN
+ip6tables -t mangle -I ACL-ALLOW 1 -p udp --dport 53 -j RETURN
+ip6tables -t mangle -I ACL-ALLOW 2 -p tcp --dport 53 -j RETURN
+
+# --- Add ACL client IPs ---
 for ip in "${CLIENTS[@]}"; do
   if [[ "$ip" == *:* ]]; then
     ip6tables -t mangle -A ACL-ALLOW -s "$ip" -j RETURN
@@ -84,18 +91,6 @@ for ip in "${CLIENTS[@]}"; do
     iptables -t mangle -A ACL-ALLOW -s "$ip" -j RETURN
   fi
 done
-
-# --- Allow DNS globally (TCP/UDP port 53) ---
-iptables -t mangle -A ACL-ALLOW -p udp --dport 53 -j RETURN
-iptables -t mangle -A ACL-ALLOW -p tcp --dport 53 -j RETURN
-ip6tables -t mangle -A ACL-ALLOW -p udp --dport 53 -j RETURN
-ip6tables -t mangle -A ACL-ALLOW -p tcp --dport 53 -j RETURN
-
-# --- Allow DNS to local loopback subnet ---
-iptables -t mangle -A ACL-ALLOW -d 127.0.0.0/8 -p udp --dport 53 -j RETURN
-iptables -t mangle -A ACL-ALLOW -d 127.0.0.0/8 -p tcp --dport 53 -j RETURN
-ip6tables -t mangle -A ACL-ALLOW -d ::1 -p udp --dport 53 -j RETURN
-ip6tables -t mangle -A ACL-ALLOW -d ::1 -p tcp --dport 53 -j RETURN
 
 # --- Allow SSH globally (TCP port 22) ---
 iptables -t mangle -A ACL-ALLOW -p tcp --dport 22 -j RETURN
