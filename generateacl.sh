@@ -55,6 +55,15 @@ read_acl() {
 read_acl
 CLIENTS+=( "fd00:beef:cafe::/64" )
 
+# Detect upstream DNS resolvers
+UPSTREAM_DNS_CONF="/run/systemd/resolve/resolv.conf"
+[ -f "$UPSTREAM_DNS_CONF" ] || UPSTREAM_DNS_CONF="/etc/resolv.conf"
+
+UPSTREAM_DNS=()
+while read -r line; do
+  [[ "$line" =~ ^nameserver[[:space:]]+([0-9a-fA-F:.]+)$ ]] && UPSTREAM_DNS+=( "${BASH_REMATCH[1]}" )
+done < "$UPSTREAM_DNS_CONF"
+
 # Write ACL file
 ACL_FILE="/etc/miniproxy/AllowedClients.acl"
 : > "$ACL_FILE"
@@ -91,6 +100,17 @@ for ip in "${CLIENTS[@]}"; do
   else
     iptables -t mangle -A ACL-ALLOW -s "$ip" -j RETURN
     iptables -t mangle -A ACL-ALLOW -d "$ip" -j RETURN
+  fi
+done
+
+# --- Add two-way rules for upstream DNS resolvers ---
+for dns_ip in "${UPSTREAM_DNS[@]}"; do
+  if [[ "$dns_ip" == *:* ]]; then
+    ip6tables -t mangle -A ACL-ALLOW -s "$dns_ip" -j RETURN
+    ip6tables -t mangle -A ACL-ALLOW -d "$dns_ip" -j RETURN
+  else
+    iptables -t mangle -A ACL-ALLOW -s "$dns_ip" -j RETURN
+    iptables -t mangle -A ACL-ALLOW -d "$dns_ip" -j RETURN
   fi
 done
 
