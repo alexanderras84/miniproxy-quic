@@ -21,7 +21,7 @@ RUN curl -fSL "https://github.com/SagerNet/sing-box/releases/download/v${SINGBOX
 
 RUN addgroup miniproxy && adduser -D -H -G miniproxy miniproxy
 
-RUN mkdir -p /etc/sing-box/
+RUN mkdir -p /etc/sing-box/ /etc/miniproxy
 
 COPY config.base.json /etc/sing-box/config.base.json
 COPY generateacl.sh /generateacl.sh
@@ -31,8 +31,9 @@ COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /generateacl.sh /dyndnscron.sh /entrypoint.sh
 RUN chown -R miniproxy:miniproxy /etc/sing-box/
 
-# Default allowed clients and DynDNS cron schedule
+# Default allowed clients and DynDNS cron settings
 ENV ALLOWED_CLIENTS="127.0.0.1"
+ENV DYNDNS_CRON_ENABLED="false"
 ENV DYNDNS_CRON_SCHEDULE="*/10 * * * *"
 
 ENTRYPOINT ["/sbin/tini", "--"]
