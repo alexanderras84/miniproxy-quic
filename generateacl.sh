@@ -1,14 +1,29 @@
 #!/bin/bash
 
 set -euo pipefail
-set -x  # Optional: enables shell debug output
+set -x  # Optional: trace commands for debug
 
 CLIENTS=()
 export DYNDNS_CRON_ENABLED=false
 
 echo "[INFO] [generateacl] Starting ACL generation"
 
-# Function to resolve hostnames and IPs into CLIENTS[]
+# --- Load clients ---
+if [ -n "${ALLOWED_CLIENTS_FILE:-}" ]; then
+  if [ -f "$ALLOWED_CLIENTS_FILE" ]; then
+    mapfile -t client_list < "$ALLOWED_CLIENTS_FILE"
+  else
+    echo "[ERROR] ALLOWED_CLIENTS_FILE is set but file does not exist!"
+    exit 1
+  fi
+elif [ -n "${ALLOWED_CLIENTS:-}" ]; then
+  IFS=', ' read -ra client_list <<< "$ALLOWED_CLIENTS"
+else
+  echo "[ERROR] No allowed clients provided via ALLOWED_CLIENTS or ALLOWED_CLIENTS_FILE"
+  exit 1
+fi
+
+# --- Resolve hostnames or use IPs ---
 function read_acl () {
   for i in "${client_list[@]}"; do
     if timeout 15s /usr/bin/ipcalc -cs "$i" >/dev/null 2>&1; then
@@ -21,6 +36,7 @@ function read_acl () {
         while read -r ip4; do
           [ -n "$ip4" ] && CLIENTS+=( "$ip4" ) && DYNDNS_CRON_ENABLED=true
         done <<< "$RESOLVE_IPV4_LIST"
+
         while read -r ip6; do
           [ -n "$ip6" ] && CLIENTS+=( "$ip6" ) && DYNDNS_CRON_ENABLED=true
         done <<< "$RESOLVE_IPV6_LIST"
@@ -31,31 +47,13 @@ function read_acl () {
   done
 }
 
-# Load client list from env var or file
-if [ -n "${ALLOWED_CLIENTS_FILE:-}" ]; then
-  if [ -f "$ALLOWED_CLIENTS_FILE" ]; then
-    mapfile -t client_list < "$ALLOWED_CLIENTS_FILE"
-  else
-    echo "[ERROR] ALLOWED_CLIENTS_FILE is set but file does not exist or is not accessible!"
-    exit 1
-  fi
-elif [ -n "${ALLOWED_CLIENTS:-}" ]; then
-  IFS=', ' read -ra client_list <<< "$ALLOWED_CLIENTS"
-else
-  echo "[ERROR] No allowed clients provided via ALLOWED_CLIENTS or ALLOWED_CLIENTS_FILE"
-  exit 1
-fi
-
-# Build CLIENTS[]
 read_acl
 
-# Always add localhost
+# --- Add local and Docker subnet ---
 CLIENTS+=( "127.0.0.1" )
-
-# Always add internal Docker subnet
 CLIENTS+=( "fd00:beef:cafe::/64" )
 
-# Write to ACL file
+# --- Write ACL file ---
 ACL_FILE="/etc/miniproxy/AllowedClients.acl"
 echo "[INFO] Writing $ACL_FILE"
 : > "$ACL_FILE"
@@ -66,17 +64,11 @@ done
 echo "[DEBUG] Wrote the following clients to $ACL_FILE:"
 printf '  %s\n' "${CLIENTS[@]}"
 
-# -----------------------
-# 🔒 Set iptables rules
-# -----------------------
-
+# --- IPTABLES Setup ---
 echo "[INFO] Applying iptables ACL rules"
-
-# Clear previous rules
 iptables -F ACL-ALLOW 2>/dev/null || iptables -N ACL-ALLOW
 ip6tables -F ACL-ALLOW 2>/dev/null || ip6tables -N ACL-ALLOW
 
-# Add rules
 for ip in "${CLIENTS[@]}"; do
   if [[ "$ip" == *:* ]]; then
     ip6tables -A ACL-ALLOW -s "$ip" -j RETURN
@@ -85,11 +77,9 @@ for ip in "${CLIENTS[@]}"; do
   fi
 done
 
-# Default DROP rule
 iptables -A ACL-ALLOW -j DROP
 ip6tables -A ACL-ALLOW -j DROP
 
-# Hook into PREROUTING chain
 iptables -C PREROUTING -t mangle -j ACL-ALLOW 2>/dev/null || iptables -t mangle -I PREROUTING -j ACL-ALLOW
 ip6tables -C PREROUTING -t mangle -j ACL-ALLOW 2>/dev/null || ip6tables -t mangle -I PREROUTING -j ACL-ALLOW
 
