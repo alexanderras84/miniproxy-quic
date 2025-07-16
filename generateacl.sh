@@ -7,9 +7,9 @@ export DYNDNS_CRON_ENABLED=false
 
 echo "[INFO] [generateacl] Starting ACL generation"
 
+# Function to resolve client list entries to IPs
 function read_acl () {
-  for i in "${client_list[@]}"
-  do
+  for i in "${client_list[@]}"; do
     if timeout 15s /usr/bin/ipcalc -cs "$i" >/dev/null 2>&1; then
       CLIENTS+=( "$i" )
     else
@@ -29,6 +29,7 @@ function read_acl () {
     fi
   done
 
+  # Add localhost if any resolution succeeded
   if ! printf '%s\n' "${client_list[@]}" | grep -q '127.0.0.1'; then
     if [ "$DYNDNS_CRON_ENABLED" = true ]; then
       CLIENTS+=( "127.0.0.1" )
@@ -36,7 +37,7 @@ function read_acl () {
   fi
 }
 
-# Source client list
+# Load client list from env var or file
 if [ -n "${ALLOWED_CLIENTS_FILE:-}" ]; then
   if [ -f "$ALLOWED_CLIENTS_FILE" ]; then
     mapfile -t client_list < "$ALLOWED_CLIENTS_FILE"
@@ -53,27 +54,28 @@ fi
 
 read_acl
 
-# Add Docker IPv6 subnet
+# Add internal Docker IPv6 subnet
 CLIENTS+=( "fd00:beef:cafe::/64" )
 
-# Write ACL file
+# Write ACL to file
 echo "[INFO] Writing /etc/miniproxy/AllowedClients.acl"
 > /etc/miniproxy/AllowedClients.acl
 for ip in "${CLIENTS[@]}"; do
   echo "$ip" >> /etc/miniproxy/AllowedClients.acl
 done
 
-# Debug print
+# Debug IPs (optional)
 echo "[DEBUG] Final resolved client IPs:"
 printf '  %s\n' "${CLIENTS[@]}"
 
-# Generate JSON-safe IP list
-QUOTED_CLIENTS=$(printf '%s\n' "${CLIENTS[@]}" | jq -R . | paste -sd ',' -)
+# Safely quote IPs as JSON array
+QUOTED_CLIENTS_JSON=$(printf '%s\n' "${CLIENTS[@]}" | jq -R -s -c 'split("\n")[:-1]')
 
-# Check base config exists
+# Config paths
 BASE_CONFIG="/etc/sing-box/config.base.json"
 OUT_CONFIG="/etc/sing-box/config.json"
 
+# Ensure base config exists
 if [ ! -f "$BASE_CONFIG" ]; then
   echo "[ERROR] Base config $BASE_CONFIG does not exist"
   exit 1
@@ -81,7 +83,8 @@ fi
 
 echo "[INFO] Writing sing-box config from base template"
 
-jq --argjson ips "[$QUOTED_CLIENTS]" '
+# Generate final config with injected ACL rules
+jq --argjson ips "$QUOTED_CLIENTS_JSON" '
   .route.rules = [
     {type: "field", source_ip: $ips, outbound: "direct"},
     {type: "field", source_ip: ["0.0.0.0/0"], outbound: "blocked"}
@@ -94,10 +97,11 @@ jq --argjson ips "[$QUOTED_CLIENTS]" '
 # Validate JSON output
 if ! jq empty "$OUT_CONFIG" >/dev/null 2>&1; then
   echo "[ERROR] Invalid JSON generated in $OUT_CONFIG"
+  cat "$OUT_CONFIG"
   exit 1
 fi
 
-# Optional debug output
+# Optional debug config output
 echo "[DEBUG] Generated sing-box config:"
 jq . "$OUT_CONFIG"
 
