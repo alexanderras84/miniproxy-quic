@@ -55,11 +55,20 @@ CLIENTS+=( "127.0.0.1" )
 CLIENTS+=( "fd00:beef:cafe::/64" )
 
 # Write to ACL file
-echo "[INFO] Writing /etc/miniproxy/AllowedClients.acl"
-> /etc/miniproxy/AllowedClients.acl
-for ip in "${CLIENTS[@]}"; do
-  echo "$ip" >> /etc/miniproxy/AllowedClients.acl
-done
+ACL_FILE="/etc/miniproxy/AllowedClients.acl"
+
+echo "[INFO] Writing $ACL_FILE"
+if [ "${#CLIENTS[@]}" -eq 0 ]; then
+  echo "[WARNING] No clients resolved. ACL file will not be created."
+else
+  > "$ACL_FILE"
+  for ip in "${CLIENTS[@]}"; do
+    echo "$ip" >> "$ACL_FILE"
+  done
+
+  echo "[DEBUG] Wrote the following clients to $ACL_FILE:"
+  printf '  %s\n' "${CLIENTS[@]}"
+fi
 
 # Debug IPs
 echo "[DEBUG] Final resolved client IPs:"
