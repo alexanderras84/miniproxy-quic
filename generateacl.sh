@@ -17,7 +17,7 @@ if [ -n "${ALLOWED_CLIENTS_FILE:-}" ]; then
     exit 1
   fi
 elif [ -n "${ALLOWED_CLIENTS:-}" ]; then
-IFS=',' read -ra client_list <<< "$ALLOWED_CLIENTS"
+  IFS=',' read -ra client_list <<< "$ALLOWED_CLIENTS"
 else
   echo "[ERROR] No allowed clients provided via ALLOWED_CLIENTS or ALLOWED_CLIENTS_FILE"
   exit 1
@@ -49,17 +49,15 @@ function read_acl () {
 
 read_acl
 echo "[DEBUG] Finished read_acl"
-echo "[DEBUG] Writing ACL file to /etc/miniproxy/AllowedClients.acl with:"
-printf "%s\n" "${CLIENTS[@]}"
 
 # --- Add local and Docker subnet ---
-echo "[DEBUG] Finished read_acl, starting static additions"
 CLIENTS+=( "127.0.0.1" )
 CLIENTS+=( "fd00:beef:cafe::/64" )
-echo "[DEBUG] Added static entries, now writing ACL file"
+echo "[DEBUG] Added static entries"
 
 # --- Write ACL file ---
 ACL_FILE="/etc/miniproxy/AllowedClients.acl"
+mkdir -p "$(dirname "$ACL_FILE")"
 echo "[INFO] Writing $ACL_FILE"
 : > "$ACL_FILE"
 for ip in "${CLIENTS[@]}"; do
