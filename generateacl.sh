@@ -3,6 +3,7 @@
 set -euo pipefail
 
 CLIENTS=()
+UPSTREAM_DNS=()
 export DYNDNS_CRON_ENABLED=false
 
 echo "[INFO] Starting ACL generation"
@@ -55,14 +56,27 @@ read_acl() {
 read_acl
 CLIENTS+=( "fd00:beef:cafe::/64" )
 
-# Detect upstream DNS resolvers
-UPSTREAM_DNS_CONF="/run/systemd/resolve/resolv.conf"
-[ -f "$UPSTREAM_DNS_CONF" ] || UPSTREAM_DNS_CONF="/etc/resolv.conf"
+# Detect upstream DNS resolvers (systemd-resolved aware)
+if command -v resolvectl >/dev/null 2>&1; then
+  while read -r ip; do
+    [[ "$ip" =~ ^([0-9a-fA-F:.]+)$ ]] && UPSTREAM_DNS+=( "$ip" )
+  done < <(resolvectl status | awk '/DNS Servers:/ {print $3} /^[[:space:]]+[0-9a-fA-F:.]+$/ {print $1}')
+fi
 
-UPSTREAM_DNS=()
-while read -r line; do
-  [[ "$line" =~ ^nameserver[[:space:]]+([0-9a-fA-F:.]+)$ ]] && UPSTREAM_DNS+=( "${BASH_REMATCH[1]}" )
-done < "$UPSTREAM_DNS_CONF"
+# Fallback: parse resolv.conf
+if [ ${#UPSTREAM_DNS[@]} -eq 0 ]; then
+  UPSTREAM_DNS_CONF="/run/systemd/resolve/resolv.conf"
+  [ -f "$UPSTREAM_DNS_CONF" ] || UPSTREAM_DNS_CONF="/etc/resolv.conf"
+  while read -r line; do
+    [[ "$line" =~ ^nameserver[[:space:]]+([0-9a-fA-F:.]+)$ ]] && UPSTREAM_DNS+=( "${BASH_REMATCH[1]}" )
+  done < "$UPSTREAM_DNS_CONF"
+fi
+
+# Final fallback to public resolvers
+if [ ${#UPSTREAM_DNS[@]} -eq 0 ]; then
+  echo "[WARN] No upstream DNS resolvers found — using fallback public resolvers"
+  UPSTREAM_DNS+=( "1.1.1.1" "8.8.8.8" "2606:4700:4700::1111" "2001:4860:4860::8888" )
+fi
 
 # Write ACL file
 ACL_FILE="/etc/miniproxy/AllowedClients.acl"
