@@ -50,8 +50,10 @@ function read_acl () {
 read_acl
 
 # --- Add local and Docker subnet ---
+echo "[DEBUG] Finished read_acl, starting static additions"
 CLIENTS+=( "127.0.0.1" )
 CLIENTS+=( "fd00:beef:cafe::/64" )
+echo "[DEBUG] Added static entries, now writing ACL file"
 
 # --- Write ACL file ---
 ACL_FILE="/etc/miniproxy/AllowedClients.acl"
