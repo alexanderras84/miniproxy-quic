@@ -8,6 +8,19 @@ export DYNDNS_CRON_ENABLED=false
 
 echo "[INFO] Starting ACL generation"
 
+# --- CLEANUP EXISTING RULES ---
+echo "[INFO] Flushing existing ACL-ALLOW chains and rules"
+
+iptables -t mangle -F ACL-ALLOW 2>/dev/null || true
+iptables -t mangle -D PREROUTING -j ACL-ALLOW 2>/dev/null || true
+iptables -t mangle -D OUTPUT -j ACL-ALLOW 2>/dev/null || true
+iptables -t mangle -X ACL-ALLOW 2>/dev/null || true
+
+ip6tables -t mangle -F ACL-ALLOW 2>/dev/null || true
+ip6tables -t mangle -D PREROUTING -j ACL-ALLOW 2>/dev/null || true
+ip6tables -t mangle -D OUTPUT -j ACL-ALLOW 2>/dev/null || true
+ip6tables -t mangle -X ACL-ALLOW 2>/dev/null || true
+
 # Load client list
 if [ -n "${ALLOWED_CLIENTS_FILE:-}" ]; then
   if [ -f "$ALLOWED_CLIENTS_FILE" ]; then
@@ -85,20 +98,9 @@ printf '%s\n' "${CLIENTS[@]}" > "$ACL_FILE"
 
 echo "[INFO] Wrote ACL entries to $ACL_FILE"
 
-# Apply iptables rules in mangle table
-echo "[INFO] Applying iptables ACL rules"
-
-if iptables -t mangle -nL ACL-ALLOW >/dev/null 2>&1; then
-  iptables -t mangle -F ACL-ALLOW
-else
-  iptables -t mangle -N ACL-ALLOW
-fi
-
-if ip6tables -t mangle -nL ACL-ALLOW >/dev/null 2>&1; then
-  ip6tables -t mangle -F ACL-ALLOW
-else
-  ip6tables -t mangle -N ACL-ALLOW
-fi
+# Create ACL-ALLOW chains
+iptables -t mangle -N ACL-ALLOW
+ip6tables -t mangle -N ACL-ALLOW
 
 # --- PRIORITY: Allow DNS from host (global rule) ---
 iptables -t mangle -I ACL-ALLOW 1 -p udp --dport 53 -j RETURN
@@ -134,7 +136,7 @@ iptables -t mangle -A ACL-ALLOW -p tcp --sport 22 -j RETURN
 ip6tables -t mangle -A ACL-ALLOW -p tcp --dport 22 -j RETURN
 ip6tables -t mangle -A ACL-ALLOW -p tcp --sport 22 -j RETURN
 
-# Final DROP
+# Final DROP (must be last)
 iptables -t mangle -A ACL-ALLOW -j DROP
 ip6tables -t mangle -A ACL-ALLOW -j DROP
 
