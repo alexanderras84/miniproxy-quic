@@ -48,6 +48,9 @@ function read_acl () {
 }
 
 read_acl
+echo "[DEBUG] Finished read_acl"
+echo "[DEBUG] Writing ACL file to /etc/miniproxy/AllowedClients.acl with:"
+printf "%s\n" "${CLIENTS[@]}"
 
 # --- Add local and Docker subnet ---
 echo "[DEBUG] Finished read_acl, starting static additions"
