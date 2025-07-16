@@ -2,7 +2,7 @@
 
 echo "[INFO] Generating ACL..."
 set +e
-/bin/bash /generateacl.sh
+source /generateacl.sh
 set -e
 
 if [ "$DYNDNS_CRON_ENABLED" = true ]; then
