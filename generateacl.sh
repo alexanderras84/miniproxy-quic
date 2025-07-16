@@ -48,15 +48,8 @@ read_acl() {
     fi
   done
 
-  # Ensure entire IPv4 loopback subnet is always allowed
-  if ! printf '%s\n' "${client_list[@]}" | grep -q '^127\.0\.0\.0/8$'; then
-    CLIENTS+=( "127.0.0.0/8" )
-  fi
-
-  # Ensure IPv6 loopback is always allowed
-  if ! printf '%s\n' "${client_list[@]}" | grep -q '^::1/128$'; then
-    CLIENTS+=( "::1/128" )
-  fi
+  # Always include loopback subnets
+  CLIENTS+=( "127.0.0.0/8" "::1/128" )
 }
 
 read_acl
@@ -98,12 +91,17 @@ iptables -t mangle -A ACL-ALLOW -p tcp --dport 53 -j RETURN
 ip6tables -t mangle -A ACL-ALLOW -p udp --dport 53 -j RETURN
 ip6tables -t mangle -A ACL-ALLOW -p tcp --dport 53 -j RETURN
 
+# --- Allow DNS to local loopback subnet ---
+iptables -t mangle -A ACL-ALLOW -d 127.0.0.0/8 -p udp --dport 53 -j RETURN
+iptables -t mangle -A ACL-ALLOW -d 127.0.0.0/8 -p tcp --dport 53 -j RETURN
+ip6tables -t mangle -A ACL-ALLOW -d ::1 -p udp --dport 53 -j RETURN
+ip6tables -t mangle -A ACL-ALLOW -d ::1 -p tcp --dport 53 -j RETURN
+
 # --- Allow SSH globally (TCP port 22) ---
 iptables -t mangle -A ACL-ALLOW -p tcp --dport 22 -j RETURN
 ip6tables -t mangle -A ACL-ALLOW -p tcp --dport 22 -j RETURN
 
 # --- Dynamically whitelist upstream DNS servers ---
-
 UPSTREAM_DNS_CONF="/run/systemd/resolve/resolv.conf"
 if [ ! -f "$UPSTREAM_DNS_CONF" ]; then
   UPSTREAM_DNS_CONF="/etc/resolv.conf"
