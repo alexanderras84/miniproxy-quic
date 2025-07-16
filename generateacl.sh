@@ -69,6 +69,7 @@ jq --argjson ips "[${ACL_JSON}]" '
 ' /etc/singbox/config.base.json > /etc/singbox/config.json
 
 echo "[INFO] Reloading sing-box"
-kill -SIGHUP "$(pgrep -xo sing-box)"
+#kill -SIGHUP "$(pgrep -xo sing-box)"
+echo "[DEBUG] Skipping reload"
 
 echo "[INFO] ACL updated and sing-box reloaded."
