@@ -122,4 +122,8 @@ ip6tables -t mangle -A ACL-ALLOW -j DROP
 iptables -t mangle -C PREROUTING -j ACL-ALLOW 2>/dev/null || iptables -t mangle -I PREROUTING -j ACL-ALLOW
 ip6tables -t mangle -C PREROUTING -j ACL-ALLOW 2>/dev/null || ip6tables -t mangle -I PREROUTING -j ACL-ALLOW
 
+# --- NEW: Ensure OUTPUT hook (important for host network local traffic) ---
+iptables -t mangle -C OUTPUT -j ACL-ALLOW 2>/dev/null || iptables -t mangle -I OUTPUT -j ACL-ALLOW
+ip6tables -t mangle -C OUTPUT -j ACL-ALLOW 2>/dev/null || ip6tables -t mangle -I OUTPUT -j ACL-ALLOW
+
 echo "[INFO] ACL generation complete and iprules updated"
