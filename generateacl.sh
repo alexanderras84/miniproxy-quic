@@ -7,7 +7,7 @@ export DYNDNS_CRON_ENABLED=false
 
 echo "[INFO] [generateacl] Starting ACL generation"
 
-# Function to resolve client list entries to IPs
+# Function to resolve hostnames and IPs into CLIENTS[]
 function read_acl () {
   for i in "${client_list[@]}"; do
     if timeout 15s /usr/bin/ipcalc -cs "$i" >/dev/null 2>&1; then
@@ -28,13 +28,6 @@ function read_acl () {
       fi
     fi
   done
-
-  # Add localhost if any resolution succeeded
-  if ! printf '%s\n' "${client_list[@]}" | grep -q '127.0.0.1'; then
-    if [ "$DYNDNS_CRON_ENABLED" = true ]; then
-      CLIENTS+=( "127.0.0.1" )
-    fi
-  fi
 }
 
 # Load client list from env var or file
@@ -52,58 +45,53 @@ else
   exit 1
 fi
 
+# Build CLIENTS[]
 read_acl
 
-# Add internal Docker IPv6 subnet
+# Always add localhost
+CLIENTS+=( "127.0.0.1" )
+
+# Always add internal Docker subnet
 CLIENTS+=( "fd00:beef:cafe::/64" )
 
-# Write ACL to file
+# Write to ACL file
 echo "[INFO] Writing /etc/miniproxy/AllowedClients.acl"
 > /etc/miniproxy/AllowedClients.acl
 for ip in "${CLIENTS[@]}"; do
   echo "$ip" >> /etc/miniproxy/AllowedClients.acl
 done
 
-# Debug IPs (optional)
+# Debug IPs
 echo "[DEBUG] Final resolved client IPs:"
 printf '  %s\n' "${CLIENTS[@]}"
 
-# Safely quote IPs as JSON array
-QUOTED_CLIENTS_JSON=$(printf '%s\n' "${CLIENTS[@]}" | jq -R -s -c 'split("\n") | map(select(length > 0))')
+# -----------------------
+# 🔒 Set iptables rules
+# -----------------------
 
-# Config paths
-BASE_CONFIG="/etc/sing-box/config.base.json"
-OUT_CONFIG="/etc/sing-box/config.json"
+echo "[INFO] Applying iptables ACL rules"
 
-# Ensure base config exists
-if [ ! -f "$BASE_CONFIG" ]; then
-  echo "[ERROR] Base config $BASE_CONFIG does not exist"
-  exit 1
-fi
+# Clear previous rules
+iptables -F ACL-ALLOW 2>/dev/null || iptables -N ACL-ALLOW
+ip6tables -F ACL-ALLOW 2>/dev/null || ip6tables -N ACL-ALLOW
 
-echo "[INFO] Writing sing-box config from base template"
+# IPv4: allow each IP
+for ip in "${CLIENTS[@]}"; do
+  if [[ "$ip" =~ ":" ]]; then
+    ip6tables -A ACL-ALLOW -s "$ip" -j RETURN
+  else
+    iptables -A ACL-ALLOW -s "$ip" -j RETURN
+  fi
+done
 
-# Generate final config with injected ACL rules
-echo "[DEBUG] QUOTED_CLIENTS_JSON: $QUOTED_CLIENTS_JSON"
-jq --argjson ips "$QUOTED_CLIENTS_JSON" '
-  .route.rules = [
-    {ip_cidr: $ips, outbound: "direct"},
-    {ip_cidr: ["0.0.0.0/0"], outbound: "blocked"}
-  ]
-' "$BASE_CONFIG" > "$OUT_CONFIG" || {
-  echo "[ERROR] Failed to write config to $OUT_CONFIG"
-  exit 1
-}
+# IPv4: drop everything else
+iptables -A ACL-ALLOW -j DROP
+ip6tables -A ACL-ALLOW -j DROP
 
-# Validate JSON output
-if ! jq empty "$OUT_CONFIG" >/dev/null 2>&1; then
-  echo "[ERROR] Invalid JSON generated in $OUT_CONFIG"
-  cat "$OUT_CONFIG"
-  exit 1
-fi
+# Insert into PREROUTING (ensure only once)
+iptables -C PREROUTING -t mangle -j ACL-ALLOW 2>/dev/null || iptables -t mangle -I PREROUTING -j ACL-ALLOW
+ip6tables -C PREROUTING -t mangle -j ACL-ALLOW 2>/dev/null || ip6tables -t mangle -I PREROUTING -j ACL-ALLOW
 
-# Optional debug config output
-echo "[DEBUG] Generated sing-box config:"
-jq . "$OUT_CONFIG"
+echo "[INFO] iptables ACL rules applied."
 
 echo "[INFO] ACL generation complete."
