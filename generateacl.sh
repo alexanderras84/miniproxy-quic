@@ -86,9 +86,17 @@ for ip in "${CLIENTS[@]}"; do
   fi
 done
 
+# --- Allow DNS globally (TCP/UDP port 53) ---
+iptables -t mangle -A ACL-ALLOW -p udp --dport 53 -j RETURN
+iptables -t mangle -A ACL-ALLOW -p tcp --dport 53 -j RETURN
+ip6tables -t mangle -A ACL-ALLOW -p udp --dport 53 -j RETURN
+ip6tables -t mangle -A ACL-ALLOW -p tcp --dport 53 -j RETURN
+
+# Final DROP
 iptables -t mangle -A ACL-ALLOW -j DROP
 ip6tables -t mangle -A ACL-ALLOW -j DROP
 
+# Ensure PREROUTING hook
 iptables -t mangle -C PREROUTING -j ACL-ALLOW 2>/dev/null || iptables -t mangle -I PREROUTING -j ACL-ALLOW
 ip6tables -t mangle -C PREROUTING -j ACL-ALLOW 2>/dev/null || ip6tables -t mangle -I PREROUTING -j ACL-ALLOW
 
