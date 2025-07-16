@@ -12,16 +12,16 @@ echo "[INFO] Starting ACL generation"
 echo "[INFO] Flushing existing chains: ACL-ALLOW and ACL-UNRESTRICTED"
 
 for chain in ACL-ALLOW ACL-UNRESTRICTED; do
-  for table in iptables ip6tables; do
-    $table -t mangle -F "$chain" 2>/dev/null || true
+  for cmd in iptables ip6tables; do
+    $cmd -t mangle -F "$chain" 2>/dev/null || true
     for hook in PREROUTING OUTPUT INPUT FORWARD; do
-      $table -t mangle -D "$hook" -j "$chain" 2>/dev/null || true
+      $cmd -t mangle -D "$hook" -j "$chain" 2>/dev/null || true
     done
-    $table -t mangle -X "$chain" 2>/dev/null || true
+    $cmd -t mangle -X "$chain" 2>/dev/null || true
   done
 done
 
-# --- READ ACL CLIENT LIST ---
+# --- READ CLIENT LIST ---
 read_acl() {
   for i in "${client_list[@]}"; do
     if timeout 15s /usr/bin/ipcalc -cs "$i" >/dev/null 2>&1; then
@@ -34,6 +34,7 @@ read_acl() {
         [ -n "$RESOLVE_IPV4_LIST" ] && while read -r ip4; do
           [ -n "$ip4" ] && CLIENTS+=( "$ip4" ) && DYNDNS_CRON_ENABLED=true
         done <<< "$RESOLVE_IPV4_LIST"
+
         [ -n "$RESOLVE_IPV6_LIST" ] && while read -r ip6; do
           [ -n "$ip6" ] && CLIENTS+=( "$ip6" ) && DYNDNS_CRON_ENABLED=true
         done <<< "$RESOLVE_IPV6_LIST"
@@ -61,7 +62,7 @@ fi
 
 read_acl
 
-# --- DETECT UPSTREAM DNS RESOLVERS ---
+# --- DETECT DNS SERVERS ---
 if command -v resolvectl >/dev/null 2>&1; then
   while read -r ip; do
     [[ "$ip" =~ ^([0-9a-fA-F:.]+)$ ]] && UPSTREAM_DNS+=( "$ip" )
@@ -90,30 +91,33 @@ ACL_FILE="/etc/miniproxy/AllowedClients.acl"
 printf '%s\n' "${CLIENTS[@]}" > "$ACL_FILE"
 echo "[INFO] Wrote allowed clients to $ACL_FILE"
 
-# --- CREATE ACL-UNRESTRICTED CHAIN (22, 53 allowed globally) ---
-for table in iptables ip6tables; do
-  $table -t mangle -N ACL-UNRESTRICTED
+# --- CREATE ACL-UNRESTRICTED CHAIN (ports 22/53 allowed globally) ---
+for cmd in iptables ip6tables; do
+  $cmd -t mangle -N ACL-UNRESTRICTED
+
   # DNS
-  $table -t mangle -A ACL-UNRESTRICTED -p udp --dport 53 -j RETURN
-  $table -t mangle -A ACL-UNRESTRICTED -p tcp --dport 53 -j RETURN
+  $cmd -t mangle -A ACL-UNRESTRICTED -p udp --dport 53 -j RETURN
+  $cmd -t mangle -A ACL-UNRESTRICTED -p tcp --dport 53 -j RETURN
+
   # SSH
-  $table -t mangle -A ACL-UNRESTRICTED -p tcp --dport 22 -j RETURN
-  $table -t mangle -A ACL-UNRESTRICTED -p tcp --sport 22 -j RETURN
+  $cmd -t mangle -A ACL-UNRESTRICTED -p tcp --dport 22 -j RETURN
+  $cmd -t mangle -A ACL-UNRESTRICTED -p tcp --sport 22 -j RETURN
+
   # Final DROP
-  $table -t mangle -A ACL-UNRESTRICTED -j DROP
+  $cmd -t mangle -A ACL-UNRESTRICTED -j DROP
 done
 
 # Hook ACL-UNRESTRICTED into all directions
-for table in iptables ip6tables; do
+for cmd in iptables ip6tables; do
   for hook in INPUT OUTPUT PREROUTING FORWARD; do
-    $table -t mangle -C "$hook" -j ACL-UNRESTRICTED 2>/dev/null || \
-    $table -t mangle -I "$hook" -j ACL-UNRESTRICTED
+    $cmd -t mangle -C "$hook" -j ACL-UNRESTRICTED 2>/dev/null || \
+    $cmd -t mangle -I "$hook" -j ACL-UNRESTRICTED
   done
 done
 
-# --- CREATE ACL-ALLOW (allow 80/443 if source/dest is client IP) ---
-for table in iptables ip6tables; do
-  $table -t mangle -N ACL-ALLOW
+# --- CREATE ACL-ALLOW (selective allow on 80/443 for client IPs only) ---
+for cmd in iptables ip6tables; do
+  $cmd -t mangle -N ACL-ALLOW
 done
 
 for ip in "${CLIENTS[@]}"; do
@@ -134,11 +138,11 @@ for ip in "${CLIENTS[@]}"; do
   fi
 done
 
-# Final DROP for ACL-ALLOW
+# Final DROP in ACL-ALLOW
 iptables -t mangle -A ACL-ALLOW -j DROP
 ip6tables -t mangle -A ACL-ALLOW -j DROP
 
-# Hook into PREROUTING only
+# Hook ACL-ALLOW into PREROUTING only
 iptables -t mangle -C PREROUTING -j ACL-ALLOW 2>/dev/null || iptables -t mangle -I PREROUTING -j ACL-ALLOW
 ip6tables -t mangle -C PREROUTING -j ACL-ALLOW 2>/dev/null || ip6tables -t mangle -I PREROUTING -j ACL-ALLOW
 
