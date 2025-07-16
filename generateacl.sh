@@ -69,7 +69,7 @@ echo "[DEBUG] Final resolved client IPs:"
 printf '  %s\n' "${CLIENTS[@]}"
 
 # Safely quote IPs as JSON array
-QUOTED_CLIENTS_JSON=$(printf '%s\n' "${CLIENTS[@]}" | jq -R -s -c 'split("\n")[:-1]')
+QUOTED_CLIENTS_JSON=$(printf '%s\n' "${CLIENTS[@]}" | jq -R -s -c 'split("\n") | map(select(length > 0))')
 
 # Config paths
 BASE_CONFIG="/etc/sing-box/config.base.json"
