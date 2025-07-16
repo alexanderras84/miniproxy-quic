@@ -34,11 +34,14 @@ RUN mkdir -p /etc/sing-box/
 
 # Copy config and scripts
 COPY config.json /etc/sing-box/config.json
+COPY entrypoint.sh /entrypoint.sh
+
+# Make entrypoint script executable
+RUN chmod +x /entrypoint.sh
 
 # Permissions
 RUN chown -R miniproxy:miniproxy /etc/sing-box/
     
-
 # Entrypoint
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["/bin/bash", "/entrypoint.sh"]
