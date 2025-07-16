@@ -28,9 +28,8 @@ RUN addgroup miniproxy && adduser -D -H -G miniproxy miniproxy
 
 RUN mkdir -p /etc/sing-box/ /etc/miniproxy
 
-# Strip nulls while copying to container
-COPY config.base.json /tmp/config.base.json
-RUN tr -d '\000' < /tmp/config.base.json > /etc/sing-box/config.base.json
+# Copy the static config.json directly
+COPY config.json /etc/sing-box/config.json
 COPY generateacl.sh /generateacl.sh
 COPY dyndnscron.sh /dyndnscron.sh
 COPY entrypoint.sh /entrypoint.sh
