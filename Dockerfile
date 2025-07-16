@@ -2,6 +2,11 @@ FROM alpine:3.20
 
 ARG SINGBOX_VERSION=1.12.0-beta.33
 
+ENV ALLOWED_CLIENTS="127.0.0.1"
+ENV DYNDNS_CRON_ENABLED="false"
+ENV DYNDNS_CRON_SCHEDULE="*/1 * * * *"
+
+EXPOSE 80/tcp
 EXPOSE 443/tcp
 EXPOSE 443/udp
 
@@ -30,11 +35,6 @@ COPY entrypoint.sh /entrypoint.sh
 
 RUN chmod +x /generateacl.sh /dyndnscron.sh /entrypoint.sh
 RUN chown -R miniproxy:miniproxy /etc/sing-box/
-
-# Default allowed clients and DynDNS cron settings
-ENV ALLOWED_CLIENTS="127.0.0.1"
-ENV DYNDNS_CRON_ENABLED="false"
-ENV DYNDNS_CRON_SCHEDULE="*/10 * * * *"
 
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["/bin/bash", "/entrypoint.sh"]
