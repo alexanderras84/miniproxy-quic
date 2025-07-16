@@ -1,9 +1,11 @@
 #!/bin/bash
 
-set -e
+set -euo pipefail
 
 CLIENTS=()
 export DYNDNS_CRON_ENABLED=false
+
+echo "[INFO] [generateacl] Starting ACL generation"
 
 function read_acl () {
   for i in "${client_list[@]}"
@@ -11,8 +13,8 @@ function read_acl () {
     if timeout 15s /usr/bin/ipcalc -cs "$i" >/dev/null 2>&1; then
       CLIENTS+=( "$i" )
     else
-      RESOLVE_IPV4_LIST=$(timeout 5s /usr/bin/dig +short "$i" A 2>/dev/null)
-      RESOLVE_IPV6_LIST=$(timeout 5s /usr/bin/dig +short "$i" AAAA 2>/dev/null)
+      RESOLVE_IPV4_LIST=$(timeout 5s /usr/bin/dig +short "$i" A 2>/dev/null || true)
+      RESOLVE_IPV6_LIST=$(timeout 5s /usr/bin/dig +short "$i" AAAA 2>/dev/null || true)
 
       if [ -n "$RESOLVE_IPV4_LIST" ] || [ -n "$RESOLVE_IPV6_LIST" ]; then
         while read -r ip4; do
@@ -22,10 +24,11 @@ function read_acl () {
           [ -n "$ip6" ] && CLIENTS+=( "$ip6" ) && DYNDNS_CRON_ENABLED=true
         done <<< "$RESOLVE_IPV6_LIST"
       else
-        echo "[ERROR] Could not resolve A or AAAA records for '$i' (timeout or failure) => Skipping"
+        echo "[ERROR] Could not resolve A or AAAA for '$i' => Skipping"
       fi
     fi
   done
+
   if ! printf '%s\n' "${client_list[@]}" | grep -q '127.0.0.1'; then
     if [ "$DYNDNS_CRON_ENABLED" = true ]; then
       CLIENTS+=( "127.0.0.1" )
@@ -34,42 +37,68 @@ function read_acl () {
 }
 
 # Source client list
-if [ -n "$ALLOWED_CLIENTS_FILE" ]; then
+if [ -n "${ALLOWED_CLIENTS_FILE:-}" ]; then
   if [ -f "$ALLOWED_CLIENTS_FILE" ]; then
     mapfile -t client_list < "$ALLOWED_CLIENTS_FILE"
   else
     echo "[ERROR] ALLOWED_CLIENTS_FILE is set but file does not exist or is not accessible!"
     exit 1
   fi
-else
+elif [ -n "${ALLOWED_CLIENTS:-}" ]; then
   IFS=', ' read -ra client_list <<< "$ALLOWED_CLIENTS"
+else
+  echo "[ERROR] No allowed clients provided via ALLOWED_CLIENTS or ALLOWED_CLIENTS_FILE"
+  exit 1
 fi
 
 read_acl
 
-# Add Docker IPv6 subnet if needed
+# Add Docker IPv6 subnet
 CLIENTS+=( "fd00:beef:cafe::/64" )
 
-# Write to ACL file
-> /etc/miniproxy/AllowedClients.acl  # Clear existing file
+# Write ACL file
+echo "[INFO] Writing /etc/miniproxy/AllowedClients.acl"
+> /etc/miniproxy/AllowedClients.acl
 for ip in "${CLIENTS[@]}"; do
   echo "$ip" >> /etc/miniproxy/AllowedClients.acl
 done
 
-# Generate the Sing-box ACL rule section
-ACL_JSON=$(printf ',\n        "%s"' "${CLIENTS[@]}")
-ACL_JSON=${ACL_JSON:2}  # Remove leading comma & newline
+# Debug print
+echo "[DEBUG] Final resolved client IPs:"
+printf '  %s\n' "${CLIENTS[@]}"
 
-# Insert into config.json (assumes a base config with a placeholder)
-jq --argjson ips "[${ACL_JSON}]" '
+# Generate JSON-safe IP list
+QUOTED_CLIENTS=$(printf '%s\n' "${CLIENTS[@]}" | jq -R . | paste -sd ',' -)
+
+# Check base config exists
+BASE_CONFIG="/etc/sing-box/config.base.json"
+OUT_CONFIG="/etc/sing-box/config.json"
+
+if [ ! -f "$BASE_CONFIG" ]; then
+  echo "[ERROR] Base config $BASE_CONFIG does not exist"
+  exit 1
+fi
+
+echo "[INFO] Writing sing-box config from base template"
+
+jq --argjson ips "[$QUOTED_CLIENTS]" '
   .route.rules = [
     {type: "field", source_ip: $ips, outbound: "direct"},
     {type: "field", source_ip: ["0.0.0.0/0"], outbound: "blocked"}
   ]
-' /etc/sing-box/config.base.json > /etc/sing-box/config.json
+' "$BASE_CONFIG" > "$OUT_CONFIG" || {
+  echo "[ERROR] Failed to write config to $OUT_CONFIG"
+  exit 1
+}
 
-echo "[INFO] Reloading sing-box"
-#kill -SIGHUP "$(pgrep -xo sing-box)"
-echo "[DEBUG] Skipping reload"
+# Validate JSON output
+if ! jq empty "$OUT_CONFIG" >/dev/null 2>&1; then
+  echo "[ERROR] Invalid JSON generated in $OUT_CONFIG"
+  exit 1
+fi
 
-echo "[INFO] ACL updated and sing-box reloaded."
+# Optional debug output
+echo "[DEBUG] Generated sing-box config:"
+jq . "$OUT_CONFIG"
+
+echo "[INFO] ACL generation complete."
