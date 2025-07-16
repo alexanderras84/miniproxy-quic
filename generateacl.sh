@@ -48,8 +48,14 @@ read_acl() {
     fi
   done
 
-  if ! printf '%s\n' "${client_list[@]}" | grep -q '^127\.0\.0\.1$'; then
-    CLIENTS+=( "127.0.0.1" )
+  # Ensure entire IPv4 loopback subnet is always allowed
+  if ! printf '%s\n' "${client_list[@]}" | grep -q '^127\.0\.0\.0/8$'; then
+    CLIENTS+=( "127.0.0.0/8" )
+  fi
+
+  # Ensure IPv6 loopback is always allowed
+  if ! printf '%s\n' "${client_list[@]}" | grep -q '^::1/128$'; then
+    CLIENTS+=( "::1/128" )
   fi
 }
 
@@ -91,12 +97,6 @@ iptables -t mangle -A ACL-ALLOW -p udp --dport 53 -j RETURN
 iptables -t mangle -A ACL-ALLOW -p tcp --dport 53 -j RETURN
 ip6tables -t mangle -A ACL-ALLOW -p udp --dport 53 -j RETURN
 ip6tables -t mangle -A ACL-ALLOW -p tcp --dport 53 -j RETURN
-
-# --- Allow DNS to local systemd stub resolver ---
-iptables -t mangle -A ACL-ALLOW -d 127.0.0.53 -p udp --dport 53 -j RETURN
-iptables -t mangle -A ACL-ALLOW -d 127.0.0.53 -p tcp --dport 53 -j RETURN
-ip6tables -t mangle -A ACL-ALLOW -d ::1 -p udp --dport 53 -j RETURN
-ip6tables -t mangle -A ACL-ALLOW -d ::1 -p tcp --dport 53 -j RETURN
 
 # --- Allow SSH globally (TCP port 22) ---
 iptables -t mangle -A ACL-ALLOW -p tcp --dport 22 -j RETURN
