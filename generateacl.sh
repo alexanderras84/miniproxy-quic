@@ -1,29 +1,29 @@
 #!/bin/bash
 
 set -euo pipefail
-set -x  # Optional: trace commands for debug
+set -x  # optional: verbose logging
 
 CLIENTS=()
 export DYNDNS_CRON_ENABLED=false
 
 echo "[INFO] [generateacl] Starting ACL generation"
 
-# --- Load clients ---
+# --- Load client list ---
 if [ -n "${ALLOWED_CLIENTS_FILE:-}" ]; then
   if [ -f "$ALLOWED_CLIENTS_FILE" ]; then
     mapfile -t client_list < "$ALLOWED_CLIENTS_FILE"
   else
-    echo "[ERROR] ALLOWED_CLIENTS_FILE is set but file does not exist!"
+    echo "[ERROR] ALLOWED_CLIENTS_FILE is set but file does not exist or is not accessible!"
     exit 1
   fi
 elif [ -n "${ALLOWED_CLIENTS:-}" ]; then
-  IFS=',' read -ra client_list <<< "$ALLOWED_CLIENTS"
+  IFS=', ' read -ra client_list <<< "$ALLOWED_CLIENTS"
 else
   echo "[ERROR] No allowed clients provided via ALLOWED_CLIENTS or ALLOWED_CLIENTS_FILE"
   exit 1
 fi
 
-# --- Resolve hostnames or use IPs ---
+# --- Resolve hostnames and collect IPs ---
 function read_acl () {
   for i in "${client_list[@]}"; do
     if timeout 15s /usr/bin/ipcalc -cs "$i" >/dev/null 2>&1; then
@@ -33,42 +33,44 @@ function read_acl () {
       RESOLVE_IPV6_LIST=$(timeout 5s /usr/bin/dig +short "$i" AAAA 2>/dev/null || true)
 
       if [ -n "$RESOLVE_IPV4_LIST" ] || [ -n "$RESOLVE_IPV6_LIST" ]; then
-        while read -r ip4; do
-          [ -n "$ip4" ] && CLIENTS+=( "$ip4" ) && DYNDNS_CRON_ENABLED=true
-        done <<< "$RESOLVE_IPV4_LIST"
-
-        while read -r ip6; do
-          [ -n "$ip6" ] && CLIENTS+=( "$ip6" ) && DYNDNS_CRON_ENABLED=true
-        done <<< "$RESOLVE_IPV6_LIST"
+        if [ -n "$RESOLVE_IPV4_LIST" ]; then
+          while read -r ip4; do
+            [ -n "$ip4" ] && CLIENTS+=( "$ip4" ) && DYNDNS_CRON_ENABLED=true
+          done <<< "$RESOLVE_IPV4_LIST"
+        fi
+        if [ -n "$RESOLVE_IPV6_LIST" ]; then
+          while read -r ip6; do
+            [ -n "$ip6" ] && CLIENTS+=( "$ip6" ) && DYNDNS_CRON_ENABLED=true
+          done <<< "$RESOLVE_IPV6_LIST"
+        fi
       else
-        echo "[ERROR] Could not resolve A or AAAA for '$i' => Skipping"
+        echo "[ERROR] Could not resolve A or AAAA records for '$i' => Skipping"
       fi
     fi
   done
+
+  # Always include 127.0.0.1 if not in the original list
+  if ! printf '%s\n' "${client_list[@]}" | grep -q '^127\.0\.0\.1$'; then
+    CLIENTS+=( "127.0.0.1" )
+  fi
 }
 
 read_acl
-echo "[DEBUG] Finished read_acl"
 
-# --- Add local and Docker subnet ---
-CLIENTS+=( "127.0.0.1" )
+# --- Static additions ---
 CLIENTS+=( "fd00:beef:cafe::/64" )
-echo "[DEBUG] Added static entries"
 
 # --- Write ACL file ---
 ACL_FILE="/etc/miniproxy/AllowedClients.acl"
-mkdir -p "$(dirname "$ACL_FILE")"
-echo "[INFO] Writing $ACL_FILE"
 : > "$ACL_FILE"
-for ip in "${CLIENTS[@]}"; do
-  echo "$ip" >> "$ACL_FILE"
-done
+printf '%s\n' "${CLIENTS[@]}" > "$ACL_FILE"
 
-echo "[DEBUG] Wrote the following clients to $ACL_FILE:"
+echo "[INFO] Wrote ACL entries to $ACL_FILE:"
 printf '  %s\n' "${CLIENTS[@]}"
 
 # --- IPTABLES Setup ---
 echo "[INFO] Applying iptables ACL rules"
+
 iptables -F ACL-ALLOW 2>/dev/null || iptables -N ACL-ALLOW
 ip6tables -F ACL-ALLOW 2>/dev/null || ip6tables -N ACL-ALLOW
 
