@@ -55,16 +55,16 @@ CLIENTS+=( "127.0.0.1" )
 CLIENTS+=( "fd00:beef:cafe::/64" )
 
 # Write to ACL file
-echo "[INFO] Writing /etc/miniproxy/AllowedClients.acl"
+ACL_FILE="/etc/miniproxy/AllowedClients.acl"
+echo "[INFO] Writing $ACL_FILE"
 mkdir -p /etc/miniproxy
-: > /etc/miniproxy/AllowedClients.acl
+: > "$ACL_FILE"
 for ip in "${CLIENTS[@]}"; do
-  echo "$ip" >> /etc/miniproxy/AllowedClients.acl
+  echo "$ip" >> "$ACL_FILE"
 done
 
-  echo "[DEBUG] Wrote the following clients to $ACL_FILE:"
-  printf '  %s\n' "${CLIENTS[@]}"
-fi
+echo "[DEBUG] Wrote the following clients to $ACL_FILE:"
+printf '  %s\n' "${CLIENTS[@]}"
 
 # Debug IPs
 echo "[DEBUG] Final resolved client IPs:"
@@ -76,26 +76,42 @@ printf '  %s\n' "${CLIENTS[@]}"
 
 echo "[INFO] Applying iptables ACL rules"
 
-# Clear previous rules
-iptables -F ACL-ALLOW 2>/dev/null || iptables -N ACL-ALLOW
-ip6tables -F ACL-ALLOW 2>/dev/null || ip6tables -N ACL-ALLOW
+# Create or flush ACL-ALLOW chains
+if ! iptables -L ACL-ALLOW >/dev/null 2>&1; then
+  iptables -N ACL-ALLOW
+else
+  iptables -F ACL-ALLOW
+fi
 
-# IPv4: allow each IP
+if ! ip6tables -L ACL-ALLOW >/dev/null 2>&1; then
+  ip6tables -N ACL-ALLOW
+else
+  ip6tables -F ACL-ALLOW
+fi
+
+# IPv4 and IPv6: allow each IP
 for ip in "${CLIENTS[@]}"; do
-  if [[ "$ip" =~ ":" ]]; then
+  if [[ "$ip" == *:* ]]; then
+    # IPv6
     ip6tables -A ACL-ALLOW -s "$ip" -j RETURN
   else
+    # IPv4
     iptables -A ACL-ALLOW -s "$ip" -j RETURN
   fi
 done
 
-# IPv4: drop everything else
+# Drop everything else in ACL-ALLOW chain
 iptables -A ACL-ALLOW -j DROP
 ip6tables -A ACL-ALLOW -j DROP
 
-# Insert into PREROUTING (ensure only once)
-iptables -C PREROUTING -t mangle -j ACL-ALLOW 2>/dev/null || iptables -t mangle -I PREROUTING -j ACL-ALLOW
-ip6tables -C PREROUTING -t mangle -j ACL-ALLOW 2>/dev/null || ip6tables -t mangle -I PREROUTING -j ACL-ALLOW
+# Insert ACL-ALLOW chain into PREROUTING chain of mangle table, if not already
+if ! iptables -t mangle -C PREROUTING -j ACL-ALLOW >/dev/null 2>&1; then
+  iptables -t mangle -I PREROUTING -j ACL-ALLOW
+fi
+
+if ! ip6tables -t mangle -C PREROUTING -j ACL-ALLOW >/dev/null 2>&1; then
+  ip6tables -t mangle -I PREROUTING -j ACL-ALLOW
+fi
 
 echo "[INFO] iptables ACL rules applied."
 
