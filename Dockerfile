@@ -14,7 +14,7 @@ RUN apk update && apk upgrade && \
     apk add --no-cache \
         jq tini curl bash gnupg procps ca-certificates openssl \
         dog lua5.4-filesystem ipcalc libcap \
-        supercronic step-cli bind-tools \
+        supercronic step-cli bind-tools nano \
         iptables ip6tables ipset iproute2 unzip && \
     rm -rf /var/cache/apk/*
 
