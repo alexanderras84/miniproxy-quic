@@ -71,8 +71,17 @@ printf '  %s\n' "${CLIENTS[@]}"
 # --- IPTABLES Setup ---
 echo "[INFO] Applying iptables ACL rules"
 
-iptables -F ACL-ALLOW 2>/dev/null || iptables -N ACL-ALLOW
-ip6tables -F ACL-ALLOW 2>/dev/null || ip6tables -N ACL-ALLOW
+if iptables -nL ACL-ALLOW >/dev/null 2>&1; then
+  iptables -F ACL-ALLOW
+else
+  iptables -N ACL-ALLOW
+fi
+
+if ip6tables -nL ACL-ALLOW >/dev/null 2>&1; then
+  ip6tables -F ACL-ALLOW
+else
+  ip6tables -N ACL-ALLOW
+fi
 
 for ip in "${CLIENTS[@]}"; do
   if [[ "$ip" == *:* ]]; then
