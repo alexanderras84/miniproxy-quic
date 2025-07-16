@@ -17,7 +17,7 @@ if [ -n "${ALLOWED_CLIENTS_FILE:-}" ]; then
     exit 1
   fi
 elif [ -n "${ALLOWED_CLIENTS:-}" ]; then
-  IFS=', ' read -ra client_list <<< "$ALLOWED_CLIENTS"
+IFS=',' read -ra client_list <<< "$ALLOWED_CLIENTS"
 else
   echo "[ERROR] No allowed clients provided via ALLOWED_CLIENTS or ALLOWED_CLIENTS_FILE"
   exit 1
