@@ -8,18 +8,20 @@ export DYNDNS_CRON_ENABLED=false
 
 echo "[INFO] Starting ACL generation"
 
-# --- CLEANUP EXISTING RULES ---
-echo "[INFO] Flushing existing ACL-ALLOW chains and rules"
+# --- CLEANUP EXISTING CHAINS ---
+echo "[INFO] Flushing existing ACL-ALLOW and ACL-DNS chains and rules"
 
-iptables -t mangle -F ACL-ALLOW 2>/dev/null || true
-iptables -t mangle -D PREROUTING -j ACL-ALLOW 2>/dev/null || true
-iptables -t mangle -D OUTPUT -j ACL-ALLOW 2>/dev/null || true
-iptables -t mangle -X ACL-ALLOW 2>/dev/null || true
+for chain in ACL-ALLOW ACL-DNS; do
+  iptables -t mangle -F "$chain" 2>/dev/null || true
+  iptables -t mangle -D PREROUTING -j "$chain" 2>/dev/null || true
+  iptables -t mangle -D OUTPUT -j "$chain" 2>/dev/null || true
+  iptables -t mangle -X "$chain" 2>/dev/null || true
 
-ip6tables -t mangle -F ACL-ALLOW 2>/dev/null || true
-ip6tables -t mangle -D PREROUTING -j ACL-ALLOW 2>/dev/null || true
-ip6tables -t mangle -D OUTPUT -j ACL-ALLOW 2>/dev/null || true
-ip6tables -t mangle -X ACL-ALLOW 2>/dev/null || true
+  ip6tables -t mangle -F "$chain" 2>/dev/null || true
+  ip6tables -t mangle -D PREROUTING -j "$chain" 2>/dev/null || true
+  ip6tables -t mangle -D OUTPUT -j "$chain" 2>/dev/null || true
+  ip6tables -t mangle -X "$chain" 2>/dev/null || true
+done
 
 # Function to resolve clients and populate CLIENTS array
 read_acl() {
@@ -93,6 +95,12 @@ if [ ${#UPSTREAM_DNS[@]} -eq 0 ]; then
   UPSTREAM_DNS+=( "1.1.1.1" "8.8.8.8" "2606:4700:4700::1111" "2001:4860:4860::8888" )
 fi
 
+# Debug print upstream DNS resolvers
+echo "[DEBUG] Upstream DNS resolvers detected:"
+for dns_ip in "${UPSTREAM_DNS[@]}"; do
+  echo "  - $dns_ip"
+done
+
 # Write ACL file
 ACL_FILE="/etc/miniproxy/AllowedClients.acl"
 : > "$ACL_FILE"
@@ -100,23 +108,33 @@ printf '%s\n' "${CLIENTS[@]}" > "$ACL_FILE"
 
 echo "[INFO] Wrote ACL entries to $ACL_FILE"
 
-# Create new ACL-ALLOW chains
-iptables -t mangle -N ACL-ALLOW
-ip6tables -t mangle -N ACL-ALLOW
+# --- CREATE ACL-DNS chain for universal outbound DNS allow ---
+iptables -t mangle -N ACL-DNS 2>/dev/null || true
+ip6tables -t mangle -N ACL-DNS 2>/dev/null || true
 
-# --- UNIVERSAL ALLOW: DNS port 53 (UDP and TCP) for everyone (upstream resolvers only) ---
-iptables -t mangle -A ACL-ALLOW -p udp --dport 53 -j RETURN
-iptables -t mangle -A ACL-ALLOW -p tcp --dport 53 -j RETURN
-ip6tables -t mangle -A ACL-ALLOW -p udp --dport 53 -j RETURN
-ip6tables -t mangle -A ACL-ALLOW -p tcp --dport 53 -j RETURN
+iptables -t mangle -A ACL-DNS -p udp --dport 53 -j RETURN
+iptables -t mangle -A ACL-DNS -p tcp --dport 53 -j RETURN
+ip6tables -t mangle -A ACL-DNS -p udp --dport 53 -j RETURN
+ip6tables -t mangle -A ACL-DNS -p tcp --dport 53 -j RETURN
 
-# --- UNIVERSAL ALLOW: SSH port 22 (both directions) ---
+iptables -t mangle -A ACL-DNS -j DROP
+ip6tables -t mangle -A ACL-DNS -j DROP
+
+# Hook ACL-DNS chain into OUTPUT
+iptables -t mangle -C OUTPUT -j ACL-DNS 2>/dev/null || iptables -t mangle -I OUTPUT -j ACL-DNS
+ip6tables -t mangle -C OUTPUT -j ACL-DNS 2>/dev/null || ip6tables -t mangle -I OUTPUT -j ACL-DNS
+
+# --- CREATE ACL-ALLOW chain for allowed clients on all ports ---
+iptables -t mangle -N ACL-ALLOW 2>/dev/null || true
+ip6tables -t mangle -N ACL-ALLOW 2>/dev/null || true
+
+# Universal allow SSH 22 both directions
 iptables -t mangle -A ACL-ALLOW -p tcp --dport 22 -j RETURN
 iptables -t mangle -A ACL-ALLOW -p tcp --sport 22 -j RETURN
 ip6tables -t mangle -A ACL-ALLOW -p tcp --dport 22 -j RETURN
 ip6tables -t mangle -A ACL-ALLOW -p tcp --sport 22 -j RETURN
 
-# --- Add two-way rules for each allowed client IP on all protocols and ports, especially for 443 ---
+# Add two-way rules for each allowed client IP on all protocols and ports, esp 443
 for ip in "${CLIENTS[@]}"; do
   if [[ "$ip" == *:* ]]; then
     ip6tables -t mangle -A ACL-ALLOW -s "$ip" -j RETURN
@@ -127,7 +145,7 @@ for ip in "${CLIENTS[@]}"; do
   fi
 done
 
-# --- Add two-way rules for upstream DNS resolvers ONLY on port 53 (UDP and TCP) ---
+# Add two-way rules for upstream DNS resolvers on port 53 only (UDP/TCP)
 for dns_ip in "${UPSTREAM_DNS[@]}"; do
   if [[ "$dns_ip" == *:* ]]; then
     ip6tables -t mangle -A ACL-ALLOW -s "$dns_ip" -p udp --dport 53 -j RETURN
@@ -142,15 +160,12 @@ for dns_ip in "${UPSTREAM_DNS[@]}"; do
   fi
 done
 
-# Final DROP (must be last)
+# Final DROP in ACL-ALLOW
 iptables -t mangle -A ACL-ALLOW -j DROP
 ip6tables -t mangle -A ACL-ALLOW -j DROP
 
-# Ensure PREROUTING and OUTPUT hooks are in place
+# Hook ACL-ALLOW into PREROUTING
 iptables -t mangle -C PREROUTING -j ACL-ALLOW 2>/dev/null || iptables -t mangle -I PREROUTING -j ACL-ALLOW
 ip6tables -t mangle -C PREROUTING -j ACL-ALLOW 2>/dev/null || ip6tables -t mangle -I PREROUTING -j ACL-ALLOW
 
-iptables -t mangle -C OUTPUT -j ACL-ALLOW 2>/dev/null || iptables -t mangle -I OUTPUT -j ACL-ALLOW
-ip6tables -t mangle -C OUTPUT -j ACL-ALLOW 2>/dev/null || ip6tables -t mangle -I OUTPUT -j ACL-ALLOW
-
-echo "[INFO] ACL generation complete and iprules updated"
+echo "[INFO] ACL generation complete and iptables rules updated"
