@@ -92,6 +92,12 @@ iptables -t mangle -A ACL-ALLOW -p tcp --dport 53 -j RETURN
 ip6tables -t mangle -A ACL-ALLOW -p udp --dport 53 -j RETURN
 ip6tables -t mangle -A ACL-ALLOW -p tcp --dport 53 -j RETURN
 
+# --- Allow DNS to local systemd stub resolver ---
+iptables -t mangle -A ACL-ALLOW -d 127.0.0.53 -p udp --dport 53 -j RETURN
+iptables -t mangle -A ACL-ALLOW -d 127.0.0.53 -p tcp --dport 53 -j RETURN
+ip6tables -t mangle -A ACL-ALLOW -d ::1 -p udp --dport 53 -j RETURN
+ip6tables -t mangle -A ACL-ALLOW -d ::1 -p tcp --dport 53 -j RETURN
+
 # Final DROP
 iptables -t mangle -A ACL-ALLOW -j DROP
 ip6tables -t mangle -A ACL-ALLOW -j DROP
