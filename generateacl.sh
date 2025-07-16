@@ -83,46 +83,31 @@ iptables -t mangle -I ACL-ALLOW 2 -p tcp --dport 53 -j RETURN
 ip6tables -t mangle -I ACL-ALLOW 1 -p udp --dport 53 -j RETURN
 ip6tables -t mangle -I ACL-ALLOW 2 -p tcp --dport 53 -j RETURN
 
-# --- Add ACL client IPs ---
+# --- Add two-way rules for each ACL client IP ---
 for ip in "${CLIENTS[@]}"; do
   if [[ "$ip" == *:* ]]; then
     ip6tables -t mangle -A ACL-ALLOW -s "$ip" -j RETURN
+    ip6tables -t mangle -A ACL-ALLOW -d "$ip" -j RETURN
   else
     iptables -t mangle -A ACL-ALLOW -s "$ip" -j RETURN
+    iptables -t mangle -A ACL-ALLOW -d "$ip" -j RETURN
   fi
 done
 
-# --- Allow SSH globally (TCP port 22) ---
+# --- Global two-way allow on port 22 ---
 iptables -t mangle -A ACL-ALLOW -p tcp --dport 22 -j RETURN
+iptables -t mangle -A ACL-ALLOW -p tcp --sport 22 -j RETURN
 ip6tables -t mangle -A ACL-ALLOW -p tcp --dport 22 -j RETURN
-
-# --- Dynamically whitelist upstream DNS servers ---
-UPSTREAM_DNS_CONF="/run/systemd/resolve/resolv.conf"
-if [ ! -f "$UPSTREAM_DNS_CONF" ]; then
-  UPSTREAM_DNS_CONF="/etc/resolv.conf"
-fi
-
-UPSTREAM_DNS=$(grep -Eo '^nameserver ([0-9a-fA-F:.]+)' "$UPSTREAM_DNS_CONF" | awk '{print $2}' || true)
-
-for dns_ip in $UPSTREAM_DNS; do
-  if [[ "$dns_ip" == *:* ]]; then
-    ip6tables -t mangle -A ACL-ALLOW -d "$dns_ip" -p udp --dport 53 -j RETURN
-    ip6tables -t mangle -A ACL-ALLOW -d "$dns_ip" -p tcp --dport 53 -j RETURN
-  else
-    iptables -t mangle -A ACL-ALLOW -d "$dns_ip" -p udp --dport 53 -j RETURN
-    iptables -t mangle -A ACL-ALLOW -d "$dns_ip" -p tcp --dport 53 -j RETURN
-  fi
-done
+ip6tables -t mangle -A ACL-ALLOW -p tcp --sport 22 -j RETURN
 
 # Final DROP
 iptables -t mangle -A ACL-ALLOW -j DROP
 ip6tables -t mangle -A ACL-ALLOW -j DROP
 
-# Ensure PREROUTING hook
+# Ensure PREROUTING and OUTPUT hooks are in place
 iptables -t mangle -C PREROUTING -j ACL-ALLOW 2>/dev/null || iptables -t mangle -I PREROUTING -j ACL-ALLOW
 ip6tables -t mangle -C PREROUTING -j ACL-ALLOW 2>/dev/null || ip6tables -t mangle -I PREROUTING -j ACL-ALLOW
 
-# --- NEW: Ensure OUTPUT hook (important for host network local traffic) ---
 iptables -t mangle -C OUTPUT -j ACL-ALLOW 2>/dev/null || iptables -t mangle -I OUTPUT -j ACL-ALLOW
 ip6tables -t mangle -C OUTPUT -j ACL-ALLOW 2>/dev/null || ip6tables -t mangle -I OUTPUT -j ACL-ALLOW
 
