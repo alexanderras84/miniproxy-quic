@@ -98,15 +98,21 @@ printf '%s\n' "${CLIENTS[@]}" > "$ACL_FILE"
 
 echo "[INFO] Wrote ACL entries to $ACL_FILE"
 
-# Create ACL-ALLOW chains
+# Create new ACL-ALLOW chains
 iptables -t mangle -N ACL-ALLOW
 ip6tables -t mangle -N ACL-ALLOW
 
-# --- PRIORITY: Allow DNS from host (global rule) ---
-iptables -t mangle -I ACL-ALLOW 1 -p udp --dport 53 -j RETURN
-iptables -t mangle -I ACL-ALLOW 2 -p tcp --dport 53 -j RETURN
-ip6tables -t mangle -I ACL-ALLOW 1 -p udp --dport 53 -j RETURN
-ip6tables -t mangle -I ACL-ALLOW 2 -p tcp --dport 53 -j RETURN
+# --- UNIVERSAL ALLOW: DNS port 53 (UDP and TCP) ---
+iptables -t mangle -A ACL-ALLOW -p udp --dport 53 -j RETURN
+iptables -t mangle -A ACL-ALLOW -p tcp --dport 53 -j RETURN
+ip6tables -t mangle -A ACL-ALLOW -p udp --dport 53 -j RETURN
+ip6tables -t mangle -A ACL-ALLOW -p tcp --dport 53 -j RETURN
+
+# --- UNIVERSAL ALLOW: SSH port 22 (both directions) ---
+iptables -t mangle -A ACL-ALLOW -p tcp --dport 22 -j RETURN
+iptables -t mangle -A ACL-ALLOW -p tcp --sport 22 -j RETURN
+ip6tables -t mangle -A ACL-ALLOW -p tcp --dport 22 -j RETURN
+ip6tables -t mangle -A ACL-ALLOW -p tcp --sport 22 -j RETURN
 
 # --- Add two-way rules for each ACL client IP ---
 for ip in "${CLIENTS[@]}"; do
@@ -129,12 +135,6 @@ for dns_ip in "${UPSTREAM_DNS[@]}"; do
     iptables -t mangle -A ACL-ALLOW -d "$dns_ip" -j RETURN
   fi
 done
-
-# --- Global two-way allow on port 22 ---
-iptables -t mangle -A ACL-ALLOW -p tcp --dport 22 -j RETURN
-iptables -t mangle -A ACL-ALLOW -p tcp --sport 22 -j RETURN
-ip6tables -t mangle -A ACL-ALLOW -p tcp --dport 22 -j RETURN
-ip6tables -t mangle -A ACL-ALLOW -p tcp --sport 22 -j RETURN
 
 # Final DROP (must be last)
 iptables -t mangle -A ACL-ALLOW -j DROP
