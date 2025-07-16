@@ -69,33 +69,37 @@ echo "[INFO] Wrote ACL entries to $ACL_FILE:"
 printf '  %s\n' "${CLIENTS[@]}"
 
 # --- IPTABLES Setup ---
-echo "[INFO] Applying iptables ACL rules"
+echo "[INFO] Applying iptables ACL rules (in mangle table)"
 
-if iptables -nL ACL-ALLOW >/dev/null 2>&1; then
-  iptables -F ACL-ALLOW
+# Create/flush mangle chain
+if iptables -t mangle -nL ACL-ALLOW >/dev/null 2>&1; then
+  iptables -t mangle -F ACL-ALLOW
 else
-  iptables -N ACL-ALLOW
+  iptables -t mangle -N ACL-ALLOW
 fi
 
-if ip6tables -nL ACL-ALLOW >/dev/null 2>&1; then
-  ip6tables -F ACL-ALLOW
+if ip6tables -t mangle -nL ACL-ALLOW >/dev/null 2>&1; then
+  ip6tables -t mangle -F ACL-ALLOW
 else
-  ip6tables -N ACL-ALLOW
+  ip6tables -t mangle -N ACL-ALLOW
 fi
 
+# Add allow rules
 for ip in "${CLIENTS[@]}"; do
   if [[ "$ip" == *:* ]]; then
-    ip6tables -A ACL-ALLOW -s "$ip" -j RETURN
+    ip6tables -t mangle -A ACL-ALLOW -s "$ip" -j RETURN
   else
-    iptables -A ACL-ALLOW -s "$ip" -j RETURN
+    iptables -t mangle -A ACL-ALLOW -s "$ip" -j RETURN
   fi
 done
 
-iptables -A ACL-ALLOW -j DROP
-ip6tables -A ACL-ALLOW -j DROP
+# Add final DROP
+iptables -t mangle -A ACL-ALLOW -j DROP
+ip6tables -t mangle -A ACL-ALLOW -j DROP
 
-iptables -C PREROUTING -t mangle -j ACL-ALLOW 2>/dev/null || iptables -t mangle -I PREROUTING -j ACL-ALLOW
-ip6tables -C PREROUTING -t mangle -j ACL-ALLOW 2>/dev/null || ip6tables -t mangle -I PREROUTING -j ACL-ALLOW
+# Ensure PREROUTING hook
+iptables -t mangle -C PREROUTING -j ACL-ALLOW 2>/dev/null || iptables -t mangle -I PREROUTING -j ACL-ALLOW
+ip6tables -t mangle -C PREROUTING -j ACL-ALLOW 2>/dev/null || ip6tables -t mangle -I PREROUTING -j ACL-ALLOW
 
 echo "[INFO] iptables ACL rules applied."
 echo "[INFO] ACL generation complete."
