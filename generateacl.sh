@@ -87,8 +87,8 @@ echo "[INFO] Writing sing-box config from base template"
 echo "[DEBUG] QUOTED_CLIENTS_JSON: $QUOTED_CLIENTS_JSON"
 jq --argjson ips "$QUOTED_CLIENTS_JSON" '
   .route.rules = [
-    {type: "field", source_ip: $ips, outbound: "direct"},
-    {type: "field", source_ip: ["0.0.0.0/0"], outbound: "blocked"}
+    {ip_cidr: $ips, outbound: "direct"},
+    {ip_cidr: ["0.0.0.0/0"], outbound: "blocked"}
   ]
 ' "$BASE_CONFIG" > "$OUT_CONFIG" || {
   echo "[ERROR] Failed to write config to $OUT_CONFIG"
