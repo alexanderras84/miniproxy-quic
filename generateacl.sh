@@ -1,14 +1,13 @@
 #!/bin/bash
 
 set -euo pipefail
-set -x  # optional: verbose logging
 
 CLIENTS=()
 export DYNDNS_CRON_ENABLED=false
 
-echo "[INFO] [generateacl] Starting ACL generation"
+echo "[INFO] Starting ACL generation"
 
-# --- Load client list ---
+# Load client list
 if [ -n "${ALLOWED_CLIENTS_FILE:-}" ]; then
   if [ -f "$ALLOWED_CLIENTS_FILE" ]; then
     mapfile -t client_list < "$ALLOWED_CLIENTS_FILE"
@@ -23,8 +22,8 @@ else
   exit 1
 fi
 
-# --- Resolve hostnames and collect IPs ---
-function read_acl () {
+# Resolve hostnames and collect IPs
+read_acl() {
   for i in "${client_list[@]}"; do
     if timeout 15s /usr/bin/ipcalc -cs "$i" >/dev/null 2>&1; then
       CLIENTS+=( "$i" )
@@ -44,34 +43,29 @@ function read_acl () {
           done <<< "$RESOLVE_IPV6_LIST"
         fi
       else
-        echo "[ERROR] Could not resolve A or AAAA records for '$i' => Skipping"
+        echo "[ERROR] Could not resolve A or AAAA records for '$i' — skipping"
       fi
     fi
   done
 
-  # Always include 127.0.0.1 if not in the original list
   if ! printf '%s\n' "${client_list[@]}" | grep -q '^127\.0\.0\.1$'; then
     CLIENTS+=( "127.0.0.1" )
   fi
 }
 
 read_acl
-
-# --- Static additions ---
 CLIENTS+=( "fd00:beef:cafe::/64" )
 
-# --- Write ACL file ---
+# Write ACL file
 ACL_FILE="/etc/miniproxy/AllowedClients.acl"
 : > "$ACL_FILE"
 printf '%s\n' "${CLIENTS[@]}" > "$ACL_FILE"
 
-echo "[INFO] Wrote ACL entries to $ACL_FILE:"
-printf '  %s\n' "${CLIENTS[@]}"
+echo "[INFO] Wrote ACL entries to $ACL_FILE"
 
-# --- IPTABLES Setup ---
-echo "[INFO] Applying iptables ACL rules (in mangle table)"
+# Apply iptables rules in mangle table
+echo "[INFO] Applying iptables ACL rules"
 
-# Create/flush mangle chain
 if iptables -t mangle -nL ACL-ALLOW >/dev/null 2>&1; then
   iptables -t mangle -F ACL-ALLOW
 else
@@ -84,7 +78,6 @@ else
   ip6tables -t mangle -N ACL-ALLOW
 fi
 
-# Add allow rules
 for ip in "${CLIENTS[@]}"; do
   if [[ "$ip" == *:* ]]; then
     ip6tables -t mangle -A ACL-ALLOW -s "$ip" -j RETURN
@@ -93,13 +86,10 @@ for ip in "${CLIENTS[@]}"; do
   fi
 done
 
-# Add final DROP
 iptables -t mangle -A ACL-ALLOW -j DROP
 ip6tables -t mangle -A ACL-ALLOW -j DROP
 
-# Ensure PREROUTING hook
 iptables -t mangle -C PREROUTING -j ACL-ALLOW 2>/dev/null || iptables -t mangle -I PREROUTING -j ACL-ALLOW
 ip6tables -t mangle -C PREROUTING -j ACL-ALLOW 2>/dev/null || ip6tables -t mangle -I PREROUTING -j ACL-ALLOW
 
-echo "[INFO] iptables ACL rules applied."
-echo "[INFO] ACL generation complete."
+echo "[INFO] ACL generation complete and iprules updated"
