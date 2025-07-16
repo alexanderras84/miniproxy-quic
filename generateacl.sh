@@ -66,7 +66,7 @@ jq --argjson ips "[${ACL_JSON}]" '
     {type: "field", source_ip: $ips, outbound: "direct"},
     {type: "field", source_ip: ["0.0.0.0/0"], outbound: "blocked"}
   ]
-' /etc/singbox/config.base.json > /etc/singbox/config.json
+' /etc/sing-box/config.base.json > /etc/sing-box/config.json
 
 echo "[INFO] Reloading sing-box"
 #kill -SIGHUP "$(pgrep -xo sing-box)"
