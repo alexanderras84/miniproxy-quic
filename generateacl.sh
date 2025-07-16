@@ -84,6 +84,7 @@ fi
 echo "[INFO] Writing sing-box config from base template"
 
 # Generate final config with injected ACL rules
+echo "[DEBUG] QUOTED_CLIENTS_JSON: $QUOTED_CLIENTS_JSON"
 jq --argjson ips "$QUOTED_CLIENTS_JSON" '
   .route.rules = [
     {type: "field", source_ip: $ips, outbound: "direct"},
