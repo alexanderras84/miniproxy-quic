@@ -102,6 +102,25 @@ ip6tables -t mangle -A ACL-ALLOW -d ::1 -p tcp --dport 53 -j RETURN
 iptables -t mangle -A ACL-ALLOW -p tcp --dport 22 -j RETURN
 ip6tables -t mangle -A ACL-ALLOW -p tcp --dport 22 -j RETURN
 
+# --- Dynamically whitelist upstream DNS servers ---
+
+UPSTREAM_DNS_CONF="/run/systemd/resolve/resolv.conf"
+if [ ! -f "$UPSTREAM_DNS_CONF" ]; then
+  UPSTREAM_DNS_CONF="/etc/resolv.conf"
+fi
+
+UPSTREAM_DNS=$(grep -Eo '^nameserver ([0-9a-fA-F:.]+)' "$UPSTREAM_DNS_CONF" | awk '{print $2}' || true)
+
+for dns_ip in $UPSTREAM_DNS; do
+  if [[ "$dns_ip" == *:* ]]; then
+    ip6tables -t mangle -A ACL-ALLOW -d "$dns_ip" -p udp --dport 53 -j RETURN
+    ip6tables -t mangle -A ACL-ALLOW -d "$dns_ip" -p tcp --dport 53 -j RETURN
+  else
+    iptables -t mangle -A ACL-ALLOW -d "$dns_ip" -p udp --dport 53 -j RETURN
+    iptables -t mangle -A ACL-ALLOW -d "$dns_ip" -p tcp --dport 53 -j RETURN
+  fi
+done
+
 # Final DROP
 iptables -t mangle -A ACL-ALLOW -j DROP
 ip6tables -t mangle -A ACL-ALLOW -j DROP
