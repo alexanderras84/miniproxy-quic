@@ -1,16 +1,13 @@
 FROM alpine:3.20
 
-ARG TARGETPLATFORM
 ARG SINGBOX_VERSION=1.12.0-beta.33
 
-# Expose required ports (optional with --network host)
+# Default environment variables for allowed clients list
+ENV ALLOWED_CLIENTS="127.0.0.1"
+
 EXPOSE 443/tcp
 EXPOSE 443/udp
 
-# Debug build platform
-RUN echo "Building for $TARGETPLATFORM"
-
-# Install all required packages
 RUN apk update && apk upgrade && \
     apk add --no-cache \
         jq tini curl bash gnupg procps ca-certificates openssl \
@@ -19,29 +16,24 @@ RUN apk update && apk upgrade && \
         iptables ip6tables ipset iproute2 unzip && \
     rm -rf /var/cache/apk/*
 
-# Install sing-box (binary only)
+# Install sing-box
 RUN curl -fSL "https://github.com/SagerNet/sing-box/releases/download/v${SINGBOX_VERSION}/sing-box-${SINGBOX_VERSION}-linux-amd64.tar.gz" \
     -o /tmp/sing-box.tar.gz && \
     tar -xzf /tmp/sing-box.tar.gz -C /tmp && \
     install -m 755 /tmp/sing-box*/sing-box /usr/local/bin/sing-box && \
     rm -rf /tmp/sing-box* /tmp/sing-box.tar.gz
 
-# Create non-root user and groups (if needed later)
 RUN addgroup miniproxy && adduser -D -H -G miniproxy miniproxy
 
-# Create config directories
 RUN mkdir -p /etc/sing-box/
 
-# Copy config and scripts
-COPY config.json /etc/sing-box/config.json
+# Copy configuration and scripts
+COPY config.base.json /etc/sing-box/config.base.json
+COPY generateacl.sh /generateacl.sh
 COPY entrypoint.sh /entrypoint.sh
 
-# Make entrypoint script executable
-RUN chmod +x /entrypoint.sh
-
-# Permissions
+RUN chmod +x /generateacl.sh /entrypoint.sh
 RUN chown -R miniproxy:miniproxy /etc/sing-box/
-    
-# Entrypoint
+
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["/bin/bash", "/entrypoint.sh"]
