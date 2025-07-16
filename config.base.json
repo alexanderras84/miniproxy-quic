@@ -42,7 +42,7 @@
     }
   ],
   "route": {
-    "rules": [],  // <-- your script will inject rules here!
+    "rules": [],
     "auto_detect_interface": true,
     "final": "direct"
   }
