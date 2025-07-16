@@ -50,6 +50,12 @@ read_acl
 # Add Docker IPv6 subnet if needed
 CLIENTS+=( "fd00:beef:cafe::/64" )
 
+# Write to ACL file
+> /etc/miniproxy/AllowedClients.acl  # Clear existing file
+for ip in "${CLIENTS[@]}"; do
+  echo "$ip" >> /etc/miniproxy/AllowedClients.acl
+done
+
 # Generate the Sing-box ACL rule section
 ACL_JSON=$(printf ',\n        "%s"' "${CLIENTS[@]}")
 ACL_JSON=${ACL_JSON:2}  # Remove leading comma & newline
