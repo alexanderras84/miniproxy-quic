@@ -8,6 +8,13 @@ export DYNDNS_CRON_ENABLED=false
 
 echo "[INFO] Starting ACL generation"
 
+# --- ENSURE SSH ACCESS BEFORE ANYTHING ---
+echo "[INFO] Ensuring SSH (port 22) is always allowed via filter table"
+for cmd in iptables ip6tables; do
+  $cmd -C INPUT -p tcp --dport 22 -j ACCEPT 2>/dev/null || $cmd -I INPUT -p tcp --dport 22 -j ACCEPT
+  $cmd -C OUTPUT -p tcp --sport 22 -j ACCEPT 2>/dev/null || $cmd -I OUTPUT -p tcp --sport 22 -j ACCEPT
+done
+
 # --- CLEANUP EXISTING CHAINS ---
 echo "[INFO] Flushing existing chains: ACL-ALLOW and ACL-UNRESTRICTED"
 
