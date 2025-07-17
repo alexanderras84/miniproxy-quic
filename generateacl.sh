@@ -26,6 +26,8 @@ for chain in ACL-ALLOW ACL-UNRESTRICTED; do
   done
 done
 
+echo "[DEBUG] Cleanup complete — all old ACL-ALLOW and ACL-UNRESTRICTED chains flushed/deleted"
+
 # --- READ ACL CLIENT LIST ---
 read_acl() {
   for i in "${client_list[@]}"; do
@@ -51,25 +53,32 @@ read_acl() {
 
 # Load allowed client list
 if [ -n "${ALLOWED_CLIENTS_FILE:-}" ]; then
-  if [ -f "$ALLOWED_CLIENTS_FILE" ]; then
-    mapfile -t client_list < "$ALLOWED_CLIENTS_FILE"
-  else
-    echo "[ERROR] ALLOWED_CLIENTS_FILE does not exist"
-    exit 1
-  fi
+  [[ -f "$ALLOWED_CLIENTS_FILE" ]] || { echo "[ERROR] ALLOWED_CLIENTS_FILE does not exist"; exit 1; }
+  mapfile -t client_list < "$ALLOWED_CLIENTS_FILE"
 elif [ -n "${ALLOWED_CLIENTS:-}" ]; then
   IFS=', ' read -ra client_list <<< "$ALLOWED_CLIENTS"
 else
-  echo "[ERROR] No ALLOWED_CLIENTS or ALLOWED_CLIENTS_FILE provided"
-  exit 1
+  echo "[ERROR] No ALLOWED_CLIENTS or ALLOWED_CLIENTS_FILE provided"; exit 1
 fi
+
+# Debug: show what we loaded
+echo "[DEBUG] Parsed client_list:"
+for ip in "${client_list[@]}"; do
+  echo "  - $ip"
+done
 
 read_acl
 
+# Debug: show final resolved IP list
+echo "[DEBUG] Final resolved CLIENTS list:"
+for ip in "${CLIENTS[@]}"; do
+  echo "  - $ip"
+done
+
 # --- DETECT UPSTREAM DNS RESOLVERS ---
-if command -v resolvectl >/dev/null 2>&1; then
+if command -v resolvectl &>/dev/null; then
   while read -r ip; do
-    [[ "$ip" =~ ^([0-9a-fA-F:.]+)$ ]] && UPSTREAM_DNS+=( "$ip" )
+    [[ "$ip" =~ ^[0-9a-fA-F:.]+$ ]] && UPSTREAM_DNS+=( "$ip" )
   done < <(resolvectl status | awk '/DNS Servers:/ {print $3} /^[[:space:]]+[0-9a-fA-F:.]+$/ {print $1}')
 fi
 
@@ -83,11 +92,13 @@ fi
 
 if [ ${#UPSTREAM_DNS[@]} -eq 0 ]; then
   echo "[WARN] No resolvers found — using public fallback"
-  UPSTREAM_DNS+=( "1.1.1.1" "8.8.8.8" "2606:4700:4700::1111" "2001:4860:4860::8888" )
+  UPSTREAM_DNS=( "1.1.1.1" "8.8.8.8" "2606:4700:4700::1111" "2001:4860:4860::8888" )
 fi
 
 echo "[DEBUG] Upstream resolvers:"
-for r in "${UPSTREAM_DNS[@]}"; do echo "  - $r"; done
+for r in "${UPSTREAM_DNS[@]}"; do
+  echo "  - $r"
+done
 
 # --- WRITE ALLOWED CLIENTS FILE ---
 ACL_FILE="/etc/miniproxy/AllowedClients.acl"
@@ -97,7 +108,6 @@ echo "[INFO] Wrote allowed clients to $ACL_FILE"
 
 # --- ACL-UNRESTRICTED (22 & 53 allowed globally) ---
 echo "[INFO] Creating ACL-UNRESTRICTED for ports 22/53"
-
 for cmd in iptables ip6tables; do
   $cmd -t mangle -N ACL-UNRESTRICTED || true
   $cmd -t mangle -A ACL-UNRESTRICTED -p tcp --dport 22 -j RETURN
@@ -106,17 +116,15 @@ for cmd in iptables ip6tables; do
   $cmd -t mangle -A ACL-UNRESTRICTED -p tcp --dport 53 -j RETURN
   $cmd -t mangle -A ACL-UNRESTRICTED -j RETURN
 done
-
 for cmd in iptables ip6tables; do
   for hook in INPUT OUTPUT PREROUTING FORWARD; do
-    $cmd -t mangle -C "$hook" -j ACL-UNRESTRICTED 2>/dev/null || \
-    $cmd -t mangle -I "$hook" -j ACL-UNRESTRICTED
+    $cmd -t mangle -C "$hook" -j ACL-UNRESTRICTED 2>/dev/null \
+      || $cmd -t mangle -I "$hook" -j ACL-UNRESTRICTED
   done
 done
 
 # --- ACL-ALLOW (only ports 80/443 and only if IP matches) ---
 echo "[INFO] Creating ACL-ALLOW for matched clients (ports 80/443)"
-
 for cmd in iptables ip6tables; do
   $cmd -t mangle -N ACL-ALLOW || true
 done
@@ -124,36 +132,28 @@ done
 for ip in "${CLIENTS[@]}"; do
   echo "[DEBUG] Processing client IP: $ip"
   if [[ "$ip" == *:* ]]; then
-    echo "[DEBUG] Detected IPv6"
     for port in 80 443; do
-      echo "[DEBUG] ip6tables -t mangle -A ACL-ALLOW -s $ip -p tcp --dport $port -j RETURN"
-      ip6tables -t mangle -A ACL-ALLOW -s "$ip" -p tcp --dport "$port" -j RETURN || echo "[ERROR] Failed to add IPv6 tcp dport rule"
-      echo "[DEBUG] ip6tables -t mangle -A ACL-ALLOW -d $ip -p tcp --sport $port -j RETURN"
-      ip6tables -t mangle -A ACL-ALLOW -d "$ip" -p tcp --sport "$port" -j RETURN || echo "[ERROR] Failed to add IPv6 tcp sport rule"
-      echo "[DEBUG] ip6tables -t mangle -A ACL-ALLOW -s $ip -p udp --dport $port -j RETURN"
-      ip6tables -t mangle -A ACL-ALLOW -s "$ip" -p udp --dport "$port" -j RETURN || echo "[ERROR] Failed to add IPv6 udp dport rule"
-      echo "[DEBUG] ip6tables -t mangle -A ACL-ALLOW -d $ip -p udp --sport $port -j RETURN"
-      ip6tables -t mangle -A ACL-ALLOW -d "$ip" -p udp --sport "$port" -j RETURN || echo "[ERROR] Failed to add IPv6 udp sport rule"
+      ip6tables -t mangle -A ACL-ALLOW -s "$ip" -p tcp --dport "$port" -j RETURN || echo "[ERROR] IPv6 tcp dport fail"
+      ip6tables -t mangle -A ACL-ALLOW -d "$ip" -p tcp --sport "$port" -j RETURN || echo "[ERROR] IPv6 tcp sport fail"
+      ip6tables -t mangle -A ACL-ALLOW -s "$ip" -p udp --dport "$port" -j RETURN || echo "[ERROR] IPv6 udp dport fail"
+      ip6tables -t mangle -A ACL-ALLOW -d "$ip" -p udp --sport "$port" -j RETURN || echo "[ERROR] IPv6 udp sport fail"
     done
   else
-    echo "[DEBUG] Detected IPv4"
     for port in 80 443; do
-      echo "[DEBUG] iptables -t mangle -A ACL-ALLOW -s $ip -p tcp --dport $port -j RETURN"
-      iptables -t mangle -A ACL-ALLOW -s "$ip" -p tcp --dport "$port" -j RETURN || echo "[ERROR] Failed to add IPv4 tcp dport rule"
-      echo "[DEBUG] iptables -t mangle -A ACL-ALLOW -d $ip -p tcp --sport $port -j RETURN"
-      iptables -t mangle -A ACL-ALLOW -d "$ip" -p tcp --sport "$port" -j RETURN || echo "[ERROR] Failed to add IPv4 tcp sport rule"
-      echo "[DEBUG] iptables -t mangle -A ACL-ALLOW -s $ip -p udp --dport $port -j RETURN"
-      iptables -t mangle -A ACL-ALLOW -s "$ip" -p udp --dport "$port" -j RETURN || echo "[ERROR] Failed to add IPv4 udp dport rule"
-      echo "[DEBUG] iptables -t mangle -A ACL-ALLOW -d $ip -p udp --sport $port -j RETURN"
-      iptables -t mangle -A ACL-ALLOW -d "$ip" -p udp --sport "$port" -j RETURN || echo "[ERROR] Failed to add IPv4 udp sport rule"
+      iptables -t mangle -A ACL-ALLOW -s "$ip" -p tcp --dport "$port" -j RETURN || echo "[ERROR] IPv4 tcp dport fail"
+      iptables -t mangle -A ACL-ALLOW -d "$ip" -p tcp --sport "$port" -j RETURN || echo "[ERROR] IPv4 tcp sport fail"
+      iptables -t mangle -A ACL-ALLOW -s "$ip" -p udp --dport "$port" -j RETURN || echo "[ERROR] IPv4 udp dport fail"
+      iptables -t mangle -A ACL-ALLOW -d "$ip" -p udp --sport "$port" -j RETURN || echo "[ERROR] IPv4 udp sport fail"
     done
   fi
 done
 
-iptables -t mangle -A ACL-ALLOW -j DROP || echo "[ERROR] Failed to add final DROP rule to ACL-ALLOW"
-ip6tables -t mangle -A ACL-ALLOW -j DROP || echo "[ERROR] Failed to add final DROP rule to ACL-ALLOW"
+iptables -t mangle -A ACL-ALLOW -j DROP || echo "[ERROR] DROP rule fail"
+ip6tables -t mangle -A ACL-ALLOW -j DROP || echo "[ERROR] DROP rule v6 fail"
 
-iptables -t mangle -C PREROUTING -j ACL-ALLOW 2>/dev/null || iptables -t mangle -I PREROUTING -j ACL-ALLOW
-ip6tables -t mangle -C PREROUTING -j ACL-ALLOW 2>/dev/null || ip6tables -t mangle -I PREROUTING -j ACL-ALLOW
+iptables -t mangle -C PREROUTING -j ACL-ALLOW 2>/dev/null \
+  || iptables -t mangle -I PREROUTING -j ACL-ALLOW
+ip6tables -t mangle -C PREROUTING -j ACL-ALLOW 2>/dev/null \
+  || ip6tables -t mangle -I PREROUTING -j ACL-ALLOW
 
 echo "[INFO] ✅ ACL setup complete: universal (22/53), conditional (80/443)"
