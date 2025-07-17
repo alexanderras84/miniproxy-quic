@@ -122,25 +122,36 @@ for cmd in iptables ip6tables; do
 done
 
 for ip in "${CLIENTS[@]}"; do
+  echo "[DEBUG] Processing client IP: $ip"
   if [[ "$ip" == *:* ]]; then
+    echo "[DEBUG] Detected IPv6"
     for port in 80 443; do
-      ip6tables -t mangle -A ACL-ALLOW -s "$ip" -p tcp --dport "$port" -j RETURN
-      ip6tables -t mangle -A ACL-ALLOW -d "$ip" -p tcp --sport "$port" -j RETURN
-      ip6tables -t mangle -A ACL-ALLOW -s "$ip" -p udp --dport "$port" -j RETURN
-      ip6tables -t mangle -A ACL-ALLOW -d "$ip" -p udp --sport "$port" -j RETURN
+      echo "[DEBUG] ip6tables -t mangle -A ACL-ALLOW -s $ip -p tcp --dport $port -j RETURN"
+      ip6tables -t mangle -A ACL-ALLOW -s "$ip" -p tcp --dport "$port" -j RETURN || echo "[ERROR] Failed to add IPv6 tcp dport rule"
+      echo "[DEBUG] ip6tables -t mangle -A ACL-ALLOW -d $ip -p tcp --sport $port -j RETURN"
+      ip6tables -t mangle -A ACL-ALLOW -d "$ip" -p tcp --sport "$port" -j RETURN || echo "[ERROR] Failed to add IPv6 tcp sport rule"
+      echo "[DEBUG] ip6tables -t mangle -A ACL-ALLOW -s $ip -p udp --dport $port -j RETURN"
+      ip6tables -t mangle -A ACL-ALLOW -s "$ip" -p udp --dport "$port" -j RETURN || echo "[ERROR] Failed to add IPv6 udp dport rule"
+      echo "[DEBUG] ip6tables -t mangle -A ACL-ALLOW -d $ip -p udp --sport $port -j RETURN"
+      ip6tables -t mangle -A ACL-ALLOW -d "$ip" -p udp --sport "$port" -j RETURN || echo "[ERROR] Failed to add IPv6 udp sport rule"
     done
   else
+    echo "[DEBUG] Detected IPv4"
     for port in 80 443; do
-      iptables -t mangle -A ACL-ALLOW -s "$ip" -p tcp --dport "$port" -j RETURN
-      iptables -t mangle -A ACL-ALLOW -d "$ip" -p tcp --sport "$port" -j RETURN
-      iptables -t mangle -A ACL-ALLOW -s "$ip" -p udp --dport "$port" -j RETURN
-      iptables -t mangle -A ACL-ALLOW -d "$ip" -p udp --sport "$port" -j RETURN
+      echo "[DEBUG] iptables -t mangle -A ACL-ALLOW -s $ip -p tcp --dport $port -j RETURN"
+      iptables -t mangle -A ACL-ALLOW -s "$ip" -p tcp --dport "$port" -j RETURN || echo "[ERROR] Failed to add IPv4 tcp dport rule"
+      echo "[DEBUG] iptables -t mangle -A ACL-ALLOW -d $ip -p tcp --sport $port -j RETURN"
+      iptables -t mangle -A ACL-ALLOW -d "$ip" -p tcp --sport "$port" -j RETURN || echo "[ERROR] Failed to add IPv4 tcp sport rule"
+      echo "[DEBUG] iptables -t mangle -A ACL-ALLOW -s $ip -p udp --dport $port -j RETURN"
+      iptables -t mangle -A ACL-ALLOW -s "$ip" -p udp --dport "$port" -j RETURN || echo "[ERROR] Failed to add IPv4 udp dport rule"
+      echo "[DEBUG] iptables -t mangle -A ACL-ALLOW -d $ip -p udp --sport $port -j RETURN"
+      iptables -t mangle -A ACL-ALLOW -d "$ip" -p udp --sport "$port" -j RETURN || echo "[ERROR] Failed to add IPv4 udp sport rule"
     done
   fi
 done
 
-iptables -t mangle -A ACL-ALLOW -j DROP
-ip6tables -t mangle -A ACL-ALLOW -j DROP
+iptables -t mangle -A ACL-ALLOW -j DROP || echo "[ERROR] Failed to add final DROP rule to ACL-ALLOW"
+ip6tables -t mangle -A ACL-ALLOW -j DROP || echo "[ERROR] Failed to add final DROP rule to ACL-ALLOW"
 
 iptables -t mangle -C PREROUTING -j ACL-ALLOW 2>/dev/null || iptables -t mangle -I PREROUTING -j ACL-ALLOW
 ip6tables -t mangle -C PREROUTING -j ACL-ALLOW 2>/dev/null || ip6tables -t mangle -I PREROUTING -j ACL-ALLOW
