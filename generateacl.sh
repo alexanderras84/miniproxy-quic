@@ -177,24 +177,22 @@ done
 
 # --- ACCEPT rules in FILTER table for ports 80/443 for allowed clients ---
 echo "[INFO] Adding ACCEPT rules in filter table for ports 80/443 for allowed clients"
-for cmd in iptables ip6tables; do
-  for ip in "${CLIENTS[@]}"; do
-    if [[ "$ip" == *:* ]]; then
-      for port in 80 443; do
-        $cmd -C INPUT -s "$ip" -p tcp --dport "$port" -j ACCEPT 2>/dev/null || $cmd -I INPUT -s "$ip" -p tcp --dport "$port" -j ACCEPT
-        $cmd -C OUTPUT -d "$ip" -p tcp --sport "$port" -j ACCEPT 2>/dev/null || $cmd -I OUTPUT -d "$ip" -p tcp --sport "$port" -j ACCEPT
-        $cmd -C INPUT -s "$ip" -p udp --dport "$port" -j ACCEPT 2>/dev/null || $cmd -I INPUT -s "$ip" -p udp --dport "$port" -j ACCEPT
-        $cmd -C OUTPUT -d "$ip" -p udp --sport "$port" -j ACCEPT 2>/dev/null || $cmd -I OUTPUT -d "$ip" -p udp --sport "$port" -j ACCEPT
-      done
-    else
-      for port in 80 443; do
-        $cmd -C INPUT -s "$ip" -p tcp --dport "$port" -j ACCEPT 2>/dev/null || $cmd -I INPUT -s "$ip" -p tcp --dport "$port" -j ACCEPT
-        $cmd -C OUTPUT -d "$ip" -p tcp --sport "$port" -j ACCEPT 2>/dev/null || $cmd -I OUTPUT -d "$ip" -p tcp --sport "$port" -j ACCEPT
-        $cmd -C INPUT -s "$ip" -p udp --dport "$port" -j ACCEPT 2>/dev/null || $cmd -I INPUT -s "$ip" -p udp --dport "$port" -j ACCEPT
-        $cmd -C OUTPUT -d "$ip" -p udp --sport "$port" -j ACCEPT 2>/dev/null || $cmd -I OUTPUT -d "$ip" -p udp --sport "$port" -j ACCEPT
-      done
-    fi
-  done
+for ip in "${CLIENTS[@]}"; do
+  if [[ "$ip" == *:* ]]; then
+    for port in 80 443; do
+      ip6tables -C INPUT -s "$ip" -p tcp --dport "$port" -j ACCEPT 2>/dev/null || ip6tables -I INPUT -s "$ip" -p tcp --dport "$port" -j ACCEPT
+      ip6tables -C OUTPUT -d "$ip" -p tcp --sport "$port" -j ACCEPT 2>/dev/null || ip6tables -I OUTPUT -d "$ip" -p tcp --sport "$port" -j ACCEPT
+      ip6tables -C INPUT -s "$ip" -p udp --dport "$port" -j ACCEPT 2>/dev/null || ip6tables -I INPUT -s "$ip" -p udp --dport "$port" -j ACCEPT
+      ip6tables -C OUTPUT -d "$ip" -p udp --sport "$port" -j ACCEPT 2>/dev/null || ip6tables -I OUTPUT -d "$ip" -p udp --sport "$port" -j ACCEPT
+    done
+  else
+    for port in 80 443; do
+      iptables -C INPUT -s "$ip" -p tcp --dport "$port" -j ACCEPT 2>/dev/null || iptables -I INPUT -s "$ip" -p tcp --dport "$port" -j ACCEPT
+      iptables -C OUTPUT -d "$ip" -p tcp --sport "$port" -j ACCEPT 2>/dev/null || iptables -I OUTPUT -d "$ip" -p tcp --sport "$port" -j ACCEPT
+      iptables -C INPUT -s "$ip" -p udp --dport "$port" -j ACCEPT 2>/dev/null || iptables -I INPUT -s "$ip" -p udp --dport "$port" -j ACCEPT
+      iptables -C OUTPUT -d "$ip" -p udp --sport "$port" -j ACCEPT 2>/dev/null || iptables -I OUTPUT -d "$ip" -p udp --sport "$port" -j ACCEPT
+    done
+  fi
 done
 echo "[INFO] ACCEPT rules for ports 80/443 added to filter table for allowed clients"
 
