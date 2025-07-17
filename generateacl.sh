@@ -8,16 +8,25 @@ export DYNDNS_CRON_ENABLED=false
 
 echo "[INFO] Starting ACL generation"
 
-# --- CLEANUP EXISTING CHAINS ---
+# --- CLEANUP EXISTING CHAINS (SAFELY) ---
 echo "[INFO] Flushing existing chains: ACL-ALLOW and ACL-UNRESTRICTED"
 
 for chain in ACL-ALLOW ACL-UNRESTRICTED; do
   for cmd in iptables ip6tables; do
-    $cmd -t mangle -F "$chain" 2>/dev/null || true
+    # Flush and delete only if chain exists
+    if $cmd -t mangle -nL "$chain" >/dev/null 2>&1; then
+      echo "[INFO] $cmd chain exists: $chain — flushing"
+      $cmd -t mangle -F "$chain" || true
+      $cmd -t mangle -X "$chain" || true
+    fi
+
+    # Remove hook references if present
     for hook in INPUT OUTPUT PREROUTING FORWARD; do
-      $cmd -t mangle -D "$hook" -j "$chain" 2>/dev/null || true
+      if $cmd -t mangle -S "$hook" 2>/dev/null | grep -q "\-j $chain"; then
+        echo "[INFO] Removing $cmd -t mangle -D $hook -j $chain"
+        $cmd -t mangle -D "$hook" -j "$chain" 2>/dev/null || true
+      fi
     done
-    $cmd -t mangle -X "$chain" 2>/dev/null || true
   done
 done
 
