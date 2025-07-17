@@ -30,10 +30,13 @@ echo "[DEBUG] Cleanup complete — all old ACL-ALLOW and ACL-UNRESTRICTED chains
 
 # --- READ ACL CLIENT LIST ---
 read_acl() {
+  echo "[DEBUG] Starting read_acl resolution process"
   for i in "${client_list[@]}"; do
     if timeout 15s ipcalc -cs "$i" >/dev/null 2>&1; then
+      echo "[DEBUG] Accepted IP/net directly: $i"
       CLIENTS+=( "$i" )
     else
+      echo "[DEBUG] Attempting DNS resolution for: $i"
       local v4=$(timeout 5s dig +short "$i" A 2>/dev/null || true)
       local v6=$(timeout 5s dig +short "$i" AAAA 2>/dev/null || true)
 
@@ -44,18 +47,22 @@ read_acl() {
         [ -n "$v6" ] && while read -r ip; do
           [ -n "$ip" ] && CLIENTS+=( "$ip" ) && DYNDNS_CRON_ENABLED=true
         done <<< "$v6"
+        echo "[DEBUG] Resolved $i to: ${v4:-<no A>}, ${v6:-<no AAAA>}"
       else
         echo "[ERROR] Failed to resolve: $i — skipping"
       fi
     fi
   done
+  echo "[DEBUG] Finished resolving dynamic client list"
 }
 
 # Load allowed client list
 if [ -n "${ALLOWED_CLIENTS_FILE:-}" ]; then
+  echo "[INFO] Loading client list from file: $ALLOWED_CLIENTS_FILE"
   [[ -f "$ALLOWED_CLIENTS_FILE" ]] || { echo "[ERROR] ALLOWED_CLIENTS_FILE does not exist"; exit 1; }
   mapfile -t client_list < "$ALLOWED_CLIENTS_FILE"
 elif [ -n "${ALLOWED_CLIENTS:-}" ]; then
+  echo "[INFO] Loading client list from environment"
   IFS=', ' read -ra client_list <<< "$ALLOWED_CLIENTS"
 else
   echo "[ERROR] No ALLOWED_CLIENTS or ALLOWED_CLIENTS_FILE provided"; exit 1
@@ -76,7 +83,9 @@ for ip in "${CLIENTS[@]}"; do
 done
 
 # --- DETECT UPSTREAM DNS RESOLVERS ---
+echo "[INFO] Detecting upstream DNS resolvers"
 if command -v resolvectl &>/dev/null; then
+  echo "[DEBUG] Using resolvectl to get DNS servers"
   while read -r ip; do
     [[ "$ip" =~ ^[0-9a-fA-F:.]+$ ]] && UPSTREAM_DNS+=( "$ip" )
   done < <(resolvectl status | awk '/DNS Servers:/ {print $3} /^[[:space:]]+[0-9a-fA-F:.]+$/ {print $1}')
@@ -85,6 +94,7 @@ fi
 if [ ${#UPSTREAM_DNS[@]} -eq 0 ]; then
   CONF="/run/systemd/resolve/resolv.conf"
   [ -f "$CONF" ] || CONF="/etc/resolv.conf"
+  echo "[DEBUG] Falling back to parsing $CONF"
   while read -r line; do
     [[ "$line" =~ ^nameserver[[:space:]]+([0-9a-fA-F:.]+)$ ]] && UPSTREAM_DNS+=( "${BASH_REMATCH[1]}" )
   done < "$CONF"
@@ -109,6 +119,7 @@ echo "[INFO] Wrote allowed clients to $ACL_FILE"
 # --- ACL-UNRESTRICTED (22 & 53 allowed globally) ---
 echo "[INFO] Creating ACL-UNRESTRICTED for ports 22/53"
 for cmd in iptables ip6tables; do
+  echo "[DEBUG] Creating ACL-UNRESTRICTED in $cmd"
   $cmd -t mangle -N ACL-UNRESTRICTED || true
   $cmd -t mangle -A ACL-UNRESTRICTED -p tcp --dport 22 -j RETURN
   $cmd -t mangle -A ACL-UNRESTRICTED -p tcp --sport 22 -j RETURN
@@ -122,10 +133,12 @@ for cmd in iptables ip6tables; do
       || $cmd -t mangle -I "$hook" -j ACL-UNRESTRICTED
   done
 done
+echo "[DEBUG] ACL-UNRESTRICTED chain created and linked"
 
 # --- ACL-ALLOW (only ports 80/443 and only if IP matches) ---
 echo "[INFO] Creating ACL-ALLOW for matched clients (ports 80/443)"
 for cmd in iptables ip6tables; do
+  echo "[DEBUG] Creating ACL-ALLOW in $cmd"
   $cmd -t mangle -N ACL-ALLOW || true
 done
 
@@ -148,9 +161,11 @@ for ip in "${CLIENTS[@]}"; do
   fi
 done
 
+echo "[DEBUG] Adding DROP fallback to ACL-ALLOW"
 iptables -t mangle -A ACL-ALLOW -j DROP || echo "[ERROR] DROP rule fail"
 ip6tables -t mangle -A ACL-ALLOW -j DROP || echo "[ERROR] DROP rule v6 fail"
 
+echo "[DEBUG] Hooking ACL-ALLOW into PREROUTING"
 iptables -t mangle -C PREROUTING -j ACL-ALLOW 2>/dev/null \
   || iptables -t mangle -I PREROUTING -j ACL-ALLOW
 ip6tables -t mangle -C PREROUTING -j ACL-ALLOW 2>/dev/null \
