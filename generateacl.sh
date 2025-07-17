@@ -123,10 +123,10 @@ ACL_FILE="/etc/miniproxy/AllowedClients.acl"
 printf '%s\n' "${CLIENTS[@]}" > "$ACL_FILE"
 echo "[INFO] Wrote allowed clients to $ACL_FILE"
 
-# --- ACL-UNRESTRICTED (22 & 53 allowed globally) ---
-echo "[INFO] Creating ACL-UNRESTRICTED for ports 22/53"
+# --- ACL-UNRESTRICTED (22 & 53 allowed globally) in mangle ---
+echo "[INFO] Creating ACL-UNRESTRICTED for ports 22/53 in mangle table"
 for cmd in iptables ip6tables; do
-  echo "[DEBUG] Creating ACL-UNRESTRICTED in $cmd"
+  echo "[DEBUG] Creating ACL-UNRESTRICTED in $cmd (mangle)"
   $cmd -t mangle -N ACL-UNRESTRICTED || true
   $cmd -t mangle -A ACL-UNRESTRICTED -p tcp --dport 22 -j RETURN
   $cmd -t mangle -A ACL-UNRESTRICTED -p tcp --sport 22 -j RETURN
@@ -140,17 +140,17 @@ for cmd in iptables ip6tables; do
       || $cmd -t mangle -I "$hook" -j ACL-UNRESTRICTED
   done
 done
-echo "[DEBUG] ACL-UNRESTRICTED chain created and linked"
+echo "[DEBUG] ACL-UNRESTRICTED chain created and linked in mangle"
 
-# --- ACL-ALLOW (only ports 80/443 and only if IP matches) ---
-echo "[INFO] Creating ACL-ALLOW for matched clients (ports 80/443)"
+# --- ACL-ALLOW (only ports 80/443 and only if IP matches) in mangle ---
+echo "[INFO] Creating ACL-ALLOW for matched clients (ports 80/443) in mangle table"
 for cmd in iptables ip6tables; do
-  echo "[DEBUG] Creating ACL-ALLOW in $cmd"
+  echo "[DEBUG] Creating ACL-ALLOW in $cmd (mangle)"
   $cmd -t mangle -N ACL-ALLOW || true
 done
 
 for ip in "${CLIENTS[@]}"; do
-  echo "[DEBUG] Processing client IP: $ip"
+  echo "[DEBUG] Processing client IP: $ip (mangle ACL-ALLOW)"
   if [[ "$ip" == *:* ]]; then
     for port in 80 443; do
       ip6tables -t mangle -A ACL-ALLOW -s "$ip" -p tcp --dport "$port" -j RETURN || echo "[ERROR] IPv6 tcp dport fail"
@@ -168,16 +168,34 @@ for ip in "${CLIENTS[@]}"; do
   fi
 done
 
-# Commented out DROP rules to avoid blocking
-# echo "[DEBUG] Adding DROP fallback to ACL-ALLOW"
-# iptables -t mangle -A ACL-ALLOW -j DROP || echo "[ERROR] DROP rule fail"
-# ip6tables -t mangle -A ACL-ALLOW -j DROP || echo "[ERROR] DROP rule v6 fail"
-
-echo "[DEBUG] Hooking ACL-ALLOW into all relevant hooks: INPUT, OUTPUT, PREROUTING, FORWARD"
+echo "[DEBUG] Hooking ACL-ALLOW into all relevant mangle hooks: INPUT, OUTPUT, PREROUTING, FORWARD"
 for cmd in iptables ip6tables; do
   for hook in INPUT OUTPUT PREROUTING FORWARD; do
     $cmd -t mangle -C "$hook" -j ACL-ALLOW 2>/dev/null || $cmd -t mangle -I "$hook" -j ACL-ALLOW
   done
 done
+
+# --- ACCEPT rules in FILTER table for ports 80/443 for allowed clients ---
+echo "[INFO] Adding ACCEPT rules in filter table for ports 80/443 for allowed clients"
+for cmd in iptables ip6tables; do
+  for ip in "${CLIENTS[@]}"; do
+    if [[ "$ip" == *:* ]]; then
+      for port in 80 443; do
+        $cmd -C INPUT -s "$ip" -p tcp --dport "$port" -j ACCEPT 2>/dev/null || $cmd -I INPUT -s "$ip" -p tcp --dport "$port" -j ACCEPT
+        $cmd -C OUTPUT -d "$ip" -p tcp --sport "$port" -j ACCEPT 2>/dev/null || $cmd -I OUTPUT -d "$ip" -p tcp --sport "$port" -j ACCEPT
+        $cmd -C INPUT -s "$ip" -p udp --dport "$port" -j ACCEPT 2>/dev/null || $cmd -I INPUT -s "$ip" -p udp --dport "$port" -j ACCEPT
+        $cmd -C OUTPUT -d "$ip" -p udp --sport "$port" -j ACCEPT 2>/dev/null || $cmd -I OUTPUT -d "$ip" -p udp --sport "$port" -j ACCEPT
+      done
+    else
+      for port in 80 443; do
+        $cmd -C INPUT -s "$ip" -p tcp --dport "$port" -j ACCEPT 2>/dev/null || $cmd -I INPUT -s "$ip" -p tcp --dport "$port" -j ACCEPT
+        $cmd -C OUTPUT -d "$ip" -p tcp --sport "$port" -j ACCEPT 2>/dev/null || $cmd -I OUTPUT -d "$ip" -p tcp --sport "$port" -j ACCEPT
+        $cmd -C INPUT -s "$ip" -p udp --dport "$port" -j ACCEPT 2>/dev/null || $cmd -I INPUT -s "$ip" -p udp --dport "$port" -j ACCEPT
+        $cmd -C OUTPUT -d "$ip" -p udp --sport "$port" -j ACCEPT 2>/dev/null || $cmd -I OUTPUT -d "$ip" -p udp --sport "$port" -j ACCEPT
+      done
+    fi
+  done
+done
+echo "[INFO] ACCEPT rules for ports 80/443 added to filter table for allowed clients"
 
 echo "[INFO] ✅ ACL setup complete: universal (22/53), conditional (80/443) — NO DROP rules active"
