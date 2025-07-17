@@ -140,4 +140,20 @@ for ip in "${CLIENTS[@]}"; do
 done
 echo "[INFO] ACCEPT rules for ports 80/443 added to filter table for allowed clients"
 
-echo "[INFO] ✅ ACL setup complete: universal (22/53) allowed in filter, marking 80/443 in mangle, filtering 80/443 in filter table — NO DROP rules active"
+# --- DROP all other 80/443 TCP & UDP traffic ---
+echo "[INFO] Adding DROP rules in filter table for all other traffic on ports 80 and 443"
+for cmd in iptables ip6tables; do
+  for port in 80 443; do
+    # DROP INPUT TCP traffic on port
+    $cmd -C INPUT -p tcp --dport "$port" -j DROP 2>/dev/null || { echo "[DEBUG] Adding $cmd INPUT TCP DROP for port $port"; $cmd -A INPUT -p tcp --dport "$port" -j DROP; }
+    # DROP OUTPUT TCP traffic on port
+    $cmd -C OUTPUT -p tcp --sport "$port" -j DROP 2>/dev/null || { echo "[DEBUG] Adding $cmd OUTPUT TCP DROP for port $port"; $cmd -A OUTPUT -p tcp --sport "$port" -j DROP; }
+
+    # DROP INPUT UDP traffic on port
+    $cmd -C INPUT -p udp --dport "$port" -j DROP 2>/dev/null || { echo "[DEBUG] Adding $cmd INPUT UDP DROP for port $port"; $cmd -A INPUT -p udp --dport "$port" -j DROP; }
+    # DROP OUTPUT UDP traffic on port
+    $cmd -C OUTPUT -p udp --sport "$port" -j DROP 2>/dev/null || { echo "[DEBUG] Adding $cmd OUTPUT UDP DROP for port $port"; $cmd -A OUTPUT -p udp --sport "$port" -j DROP; }
+  done
+done
+
+echo "[INFO] ✅ ACL setup complete: universal (22/53) allowed, marking 80/443 in mangle, filtering 80/443 for allowed clients, dropping others"
