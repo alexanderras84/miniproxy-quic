@@ -168,9 +168,10 @@ for ip in "${CLIENTS[@]}"; do
   fi
 done
 
-echo "[DEBUG] Adding DROP fallback to ACL-ALLOW"
-iptables -t mangle -A ACL-ALLOW -j DROP || echo "[ERROR] DROP rule fail"
-ip6tables -t mangle -A ACL-ALLOW -j DROP || echo "[ERROR] DROP rule v6 fail"
+# Commented out DROP rules to avoid blocking
+# echo "[DEBUG] Adding DROP fallback to ACL-ALLOW"
+# iptables -t mangle -A ACL-ALLOW -j DROP || echo "[ERROR] DROP rule fail"
+# ip6tables -t mangle -A ACL-ALLOW -j DROP || echo "[ERROR] DROP rule v6 fail"
 
 echo "[DEBUG] Hooking ACL-ALLOW into PREROUTING"
 iptables -t mangle -C PREROUTING -j ACL-ALLOW 2>/dev/null \
@@ -178,4 +179,4 @@ iptables -t mangle -C PREROUTING -j ACL-ALLOW 2>/dev/null \
 ip6tables -t mangle -C PREROUTING -j ACL-ALLOW 2>/dev/null \
   || ip6tables -t mangle -I PREROUTING -j ACL-ALLOW
 
-echo "[INFO] ✅ ACL setup complete: universal (22/53), conditional (80/443)"
+echo "[INFO] ✅ ACL setup complete: universal (22/53), conditional (80/443) — NO DROP rules active"
