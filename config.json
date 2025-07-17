@@ -11,7 +11,7 @@
       "listen_port": 443,
       "sniff": true,
       "sniff_override_destination": true,
-      "sniff_timeout": "1000ms",
+      "sniff_timeout": "100ms",
       "domain_strategy": "ipv4_only",
       "udp_disable_domain_unmapping": true,
       "udp_fragment": true
@@ -23,7 +23,7 @@
       "listen_port": 80,
       "sniff": true,
       "sniff_override_destination": true,
-      "sniff_timeout": "500ms",
+      "sniff_timeout": "100ms",
       "domain_strategy": "ipv4_only",
       "udp_disable_domain_unmapping": true,
       "udp_fragment": true
