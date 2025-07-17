@@ -1,6 +1,6 @@
 #!/bin/bash
-
 set -euo pipefail
+[[ "${DEBUG:-false}" == "true" ]] && set -x
 
 CLIENTS=()
 UPSTREAM_DNS=()
@@ -8,25 +8,21 @@ export DYNDNS_CRON_ENABLED=false
 
 echo "[INFO] Starting ACL generation"
 
-# --- CLEANUP EXISTING CHAINS (SAFELY) ---
+# --- CLEANUP EXISTING CHAINS ---
 echo "[INFO] Flushing existing chains: ACL-ALLOW and ACL-UNRESTRICTED"
 
 for chain in ACL-ALLOW ACL-UNRESTRICTED; do
   for cmd in iptables ip6tables; do
-    # Flush and delete only if chain exists
-    if $cmd -t mangle -nL "$chain" >/dev/null 2>&1; then
-      echo "[INFO] $cmd chain exists: $chain — flushing"
+    if $cmd -t mangle -L "$chain" &>/dev/null; then
+      echo "[DEBUG] Flushing existing chain $chain with $cmd"
       $cmd -t mangle -F "$chain" || true
-      $cmd -t mangle -X "$chain" || true
-    fi
-
-    # Remove hook references if present
-    for hook in INPUT OUTPUT PREROUTING FORWARD; do
-      if $cmd -t mangle -S "$hook" 2>/dev/null | grep -q "\-j $chain"; then
-        echo "[INFO] Removing $cmd -t mangle -D $hook -j $chain"
+      for hook in INPUT OUTPUT PREROUTING FORWARD; do
         $cmd -t mangle -D "$hook" -j "$chain" 2>/dev/null || true
-      fi
-    done
+      done
+      $cmd -t mangle -X "$chain" || true
+    else
+      echo "[DEBUG] Skipping undefined chain $chain for $cmd"
+    fi
   done
 done
 
@@ -100,6 +96,8 @@ printf '%s\n' "${CLIENTS[@]}" > "$ACL_FILE"
 echo "[INFO] Wrote allowed clients to $ACL_FILE"
 
 # --- ACL-UNRESTRICTED (22 & 53 allowed globally) ---
+echo "[INFO] Creating ACL-UNRESTRICTED for ports 22/53"
+
 for cmd in iptables ip6tables; do
   $cmd -t mangle -N ACL-UNRESTRICTED || true
   $cmd -t mangle -A ACL-UNRESTRICTED -p tcp --dport 22 -j RETURN
@@ -117,6 +115,8 @@ for cmd in iptables ip6tables; do
 done
 
 # --- ACL-ALLOW (only ports 80/443 and only if IP matches) ---
+echo "[INFO] Creating ACL-ALLOW for matched clients (ports 80/443)"
+
 for cmd in iptables ip6tables; do
   $cmd -t mangle -N ACL-ALLOW || true
 done
