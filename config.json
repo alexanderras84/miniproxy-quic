@@ -3,6 +3,10 @@
     "level": "error",
     "output": "stderr"
   },
+
+  // =========================================
+  // INBOUNDS
+  // =========================================
   "inbounds": [
     {
       "type": "tproxy",
@@ -29,6 +33,10 @@
       "udp_fragment": true
     }
   ],
+
+  // =========================================
+  // OUTBOUNDS
+  // =========================================
   "outbounds": [
     {
       "type": "direct",
@@ -37,8 +45,40 @@
       "udp_fragment": true
     }
   ],
+
+  // =========================================
+  // RULE PROVIDERS — NEW
+  // =========================================
+  "rule_providers": {
+    "allowed_clients": {
+      "type": "file",
+      "format": "text",
+      "path": "/etc/sing-box/allowlist.acl",
+      "reload": true
+    }
+  },
+
+  // =========================================
+  // ROUTING
+  // =========================================
   "route": {
-    "rules": [],
+    "rules": [
+      {
+        // Only allow traffic from IPs in allowlist.acl on ports 80/443
+        "inbound": ["tproxy-in-443", "tproxy-in-80"],
+        "rule_set": "allowed_clients",
+        "action": "direct"
+      },
+      {
+        // Reject anything NOT in the allowlist on ports 80/443
+        // (sing-box recommends "block" instead of "reject" for ACL)
+        "inbound": ["tproxy-in-443", "tproxy-in-80"],
+        "invert": true,
+        "rule_set": "allowed_clients",
+        "action": "block"
+      }
+    ],
+
     "auto_detect_interface": true,
     "final": "direct"
   }
