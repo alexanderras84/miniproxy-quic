@@ -12,7 +12,7 @@
       "sniff": true,
       "sniff_override_destination": true,
       "sniff_timeout": "100ms",
-      "domain_strategy": "ipv4_only",
+      "network_type": ["ipv4"],
       "udp_disable_domain_unmapping": true,
       "udp_fragment": true
     },
@@ -24,7 +24,7 @@
       "sniff": true,
       "sniff_override_destination": true,
       "sniff_timeout": "100ms",
-      "domain_strategy": "ipv4_only",
+      "network_type": ["ipv4"],
       "udp_disable_domain_unmapping": true,
       "udp_fragment": true
     }
@@ -37,7 +37,7 @@
       "udp_fragment": true
     }
   ],
-  "rule_providers": {
+  "rule-providers": {
     "allowed_clients": {
       "type": "file",
       "format": "text",
