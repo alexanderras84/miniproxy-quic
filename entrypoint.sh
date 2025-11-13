@@ -1,23 +1,29 @@
 #!/bin/bash -e
 
-echo "[INFO] Generating ACL..."
+echo "[INFO] Generating allowlist..."
 set +e
 source /generateacl.sh
 set -e
 
+# -------------------------------------------------------------------
+# DynDNS Cron Handling
+# -------------------------------------------------------------------
 if [ "$DYNDNS_CRON_ENABLED" = true ]; then
-  echo "[INFO] DynDNS Address in ALLOWED_CLIENTS detected => Enable cron job"
+  echo "[INFO] DynDNS detected in allowlist => enabling DynDNS cron job"
   echo "$DYNDNS_CRON_SCHEDULE /bin/bash /dyndnscron.sh" > /etc/miniproxy/dyndns.cron
   supercronic /etc/miniproxy/dyndns.cron &
 fi
 
-echo "[INFO] Starting sing-box.."
+# -------------------------------------------------------------------
+# Start sing-box
+# -------------------------------------------------------------------
+echo "[INFO] Starting sing-box..."
 sing-box run -c /etc/sing-box/config.json &
 singbox_pid=$!
 
-sleep 5
+echo "==================================================================="
+echo "[INFO] Miniproxy QUIC started successfully"
+echo "==================================================================="
 
-echo "==================================================================="
-echo "[INFO] Miniproxy QUIC started"
-echo "==================================================================="
+# Keep container alive on sing-box PID
 wait $singbox_pid
