@@ -12,7 +12,7 @@
       "sniff": true,
       "sniff_override_destination": true,
       "sniff_timeout": "100ms",
-      "network_type": ["ipv4"],
+      "domain_strategy": "ipv4_only",
       "udp_disable_domain_unmapping": true,
       "udp_fragment": true
     },
@@ -24,7 +24,7 @@
       "sniff": true,
       "sniff_override_destination": true,
       "sniff_timeout": "100ms",
-      "network_type": ["ipv4"],
+      "domain_strategy": "ipv4_only",
       "udp_disable_domain_unmapping": true,
       "udp_fragment": true
     }
@@ -48,12 +48,18 @@
   "route": {
     "rules": [
       {
-        "inbound": ["tproxy-in-443", "tproxy-in-80"],
+        "inbound": [
+          "tproxy-in-443",
+          "tproxy-in-80"
+        ],
         "rule_set": "allowed_clients",
         "action": "direct"
       },
       {
-        "inbound": ["tproxy-in-443", "tproxy-in-80"],
+        "inbound": [
+          "tproxy-in-443",
+          "tproxy-in-80"
+        ],
         "invert": true,
         "rule_set": "allowed_clients",
         "action": "block"
