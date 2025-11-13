@@ -2,6 +2,9 @@
 CLIENTS=()
 export DYNDNS_CRON_ENABLED=false
 
+# Output file for sing-box rule provider
+ACL_FILE="/etc/sing-box/allowlist.acl"
+
 function read_acl () {
   for i in "${client_list[@]}"
   do
@@ -17,6 +20,7 @@ function read_acl () {
         while read -r ip4; do
           [ -n "$ip4" ] && CLIENTS+=( "$ip4" ) && DYNDNS_CRON_ENABLED=true
         done <<< "$RESOLVE_IPV4_LIST"
+
         while read -r ip6; do
           [ -n "$ip6" ] && CLIENTS+=( "$ip6" ) && DYNDNS_CRON_ENABLED=true
         done <<< "$RESOLVE_IPV6_LIST"
@@ -29,7 +33,6 @@ function read_acl () {
   # Ensure 127.0.0.1 is present if dynamic DNS clients were resolved
   if ! printf '%s\n' "${client_list[@]}" | grep -q '127.0.0.1'; then
     if [ "$DYNDNS_CRON_ENABLED" = true ]; then
-     # echo "[INFO] Adding '127.0.0.1' to allowed clients to prevent reload issues"
       CLIENTS+=( "127.0.0.1" )
     fi
   fi
@@ -51,18 +54,19 @@ fi
 read_acl
 
 # Hardcode Docker IPv6 subnet to allowed clients
-# echo "[INFO] Adding hardcoded Docker IPv6 subnet to allowlist: fd00:beef:dead:1::/64"
 CLIENTS+=( "fd00:beef:cafe::/64" )
 
-# Generate NGINX ACL files
-printf '%s\n' "${CLIENTS[@]}" > /etc/nginx/allowedClients.acl
+# ========================================
+#  WRITE SING-BOX RULE PROVIDER FILE
+# ========================================
 
-if [ -s /etc/nginx/allowedClients.acl ]; then
-  : > /etc/nginx/allowedClients.conf
-  while read -r line; do
-    echo "allow $line;" >> /etc/nginx/allowedClients.conf
-  done < /etc/nginx/allowedClients.acl
-  echo "deny all;" >> /etc/nginx/allowedClients.conf
+printf '%s\n' "${CLIENTS[@]}" > "$ACL_FILE"
+
+if [ -s "$ACL_FILE" ]; then
+  echo "[INFO] Generated sing-box allowlist: $ACL_FILE"
+  echo "[INFO] Total entries: ${#CLIENTS[@]}"
 else
-  touch /etc/nginx/allowedClients.conf
+  echo "[WARN] Allowlist file is empty: $ACL_FILE"
 fi
+
+exit 0
