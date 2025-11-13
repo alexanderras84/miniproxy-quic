@@ -1,9 +1,7 @@
-#!/bin/bash -e
+#!/bin/bash
 
 echo "[INFO] Generating allowlist..."
-set +e
-source /generateacl.sh
-set -e
+bash /generateacl.sh || echo "[WARN] generateacl.sh returned a non-zero exit"
 
 # -------------------------------------------------------------------
 # DynDNS Cron Handling
