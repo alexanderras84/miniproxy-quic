@@ -3,7 +3,7 @@ FROM alpine:3.20
 # -------------------------------------------------
 # Sing-Box stable version (latest stable as of now)
 # -------------------------------------------------
-ARG SINGBOX_VERSION=1.12.12
+ARG SINGBOX_VERSION=1.12.22
 
 ENV ALLOWED_CLIENTS="127.0.0.1"
 ENV DYNDNS_CRON_ENABLED="false"
