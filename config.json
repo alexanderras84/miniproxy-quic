@@ -36,5 +36,10 @@
       "tcp_fast_open": true,
       "udp_fragment": true
     }
-  ]
+  ],
+  "route": {
+    "rules": [],
+    "auto_detect_interface": true,
+    "final": "direct"
+  }
 }
