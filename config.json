@@ -6,7 +6,7 @@
   },
   "inbounds": [
     {
-      "type": "direct",
+      "type": "tproxy",
       "tag": "tcp-in",
       "listen": "::",
       "listen_port": 443,
@@ -17,7 +17,7 @@
       "domain_strategy": "prefer_ipv4"
     },
     {
-      "type": "direct",
+      "type": "tproxy",
       "tag": "udp-in",
       "listen": "::",
       "listen_port": 443,
@@ -28,7 +28,7 @@
       "udp_fragment": true
     },
     {
-      "type": "direct",
+      "type": "tproxy",
       "tag": "http-in",
       "listen": "::",
       "listen_port": 80,
