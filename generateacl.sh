@@ -4,35 +4,37 @@ set -euo pipefail
 CLIENTS=()
 export DYNDNS_CRON_ENABLED=false
 
+###############################################################################
+# READ ACL CLIENTS
+###############################################################################
+
 function read_acl () {
   echo "[INFO] Reading allowed clients from source..."
+
   for i in "${client_list[@]}"
   do
-    # Check if already an IP address (IPv4 or IPv6)
     if timeout 15s /usr/bin/ipcalc -cs "$i" >/dev/null 2>&1; then
       CLIENTS+=( "$i" )
     else
-      # Resolve A records (IPv4)
       RESOLVE_IPV4_LIST=$(timeout 5s /usr/bin/dig +short "$i" A 2>/dev/null)
-      # Resolve AAAA records (IPv6)
       RESOLVE_IPV6_LIST=$(timeout 5s /usr/bin/dig +short "$i" AAAA 2>/dev/null)
 
       if [ -n "$RESOLVE_IPV4_LIST" ] || [ -n "$RESOLVE_IPV6_LIST" ]; then
         while read -r ip4; do
           [ -n "$ip4" ] && CLIENTS+=( "$ip4" ) && DYNDNS_CRON_ENABLED=true
         done <<< "$RESOLVE_IPV4_LIST"
+
         while read -r ip6; do
           [ -n "$ip6" ] && CLIENTS+=( "$ip6" ) && DYNDNS_CRON_ENABLED=true
         done <<< "$RESOLVE_IPV6_LIST"
       else
-        echo "[ERROR] Could not resolve A or AAAA records for '$i' (timeout or failure), skipping"
+        echo "[ERROR] Could not resolve A or AAAA records for '$i', skipping"
       fi
     fi
   done
 
   if ! printf '%s\n' "${client_list[@]}" | grep -q '127.0.0.1'; then
     if [ "$DYNDNS_CRON_ENABLED" = true ]; then
-      echo "[INFO] Adding '127.0.0.1' to allowed clients to prevent reload issues"
       CLIENTS+=( "127.0.0.1" )
     fi
   fi
@@ -41,95 +43,119 @@ function read_acl () {
   printf '%s\n' "${CLIENTS[@]}"
 }
 
-# Determine client list source from Docker environment variable
 if [ -n "${ALLOWED_CLIENTS_FILE:-}" ]; then
   if [ -f "$ALLOWED_CLIENTS_FILE" ]; then
-    echo "[INFO] Reading allowed clients from file: $ALLOWED_CLIENTS_FILE"
     mapfile -t client_list < "$ALLOWED_CLIENTS_FILE"
   else
-    echo "[ERROR] ALLOWED_CLIENTS_FILE is set but file does not exist or is not accessible!"
+    echo "[ERROR] ALLOWED_CLIENTS_FILE set but file missing!"
     exit 1
   fi
 else
-  echo "[INFO] Reading allowed clients from environment variable ALLOWED_CLIENTS"
   IFS=', ' read -ra client_list <<< "${ALLOWED_CLIENTS:-}"
 fi
 
 read_acl
 
-echo "[INFO] Starting ACL generation"
+echo "[INFO] Starting ACL + TPROXY setup"
 
 ###############################################################################
-# FIREWALL / ACL LOGIC COMMENTED OUT BELOW
+# TPROXY POLICY ROUTING (REQUIRED FOR QUIC)
 ###############################################################################
 
-# --- ENSURE SSH (22) and DNS (53) universally allowed in FILTER table ---
-# echo "[INFO] Ensuring SSH (22) and DNS (53) ports are always allowed via filter table"
-# for cmd in iptables ip6tables; do
-#   for port in 22 53; do
-#     $cmd -C INPUT -p tcp --dport "$port" -j ACCEPT 2>/dev/null || $cmd -I INPUT -p tcp --dport "$port" -j ACCEPT
-#     $cmd -C OUTPUT -p tcp --sport "$port" -j ACCEPT 2>/dev/null || $cmd -I OUTPUT -p tcp --sport "$port" -j ACCEPT
-#   done
-#
-#   $cmd -C INPUT -p udp --dport 53 -j ACCEPT 2>/dev/null || $cmd -I INPUT -p udp --dport 53 -j ACCEPT
-#   $cmd -C OUTPUT -p udp --sport 53 -j ACCEPT 2>/dev/null || $cmd -I OUTPUT -p udp --sport 53 -j ACCEPT
-# done
+echo "[INFO] Setting up policy routing for TPROXY"
 
-# --- CLEANUP EXISTING CHAINS IN FILTER TABLE ---
-# echo "[INFO] Flushing existing ACL-ALLOW chain in filter table"
-# for cmd in iptables ip6tables; do
-#   if $cmd -t filter -L ACL-ALLOW &>/dev/null; then
-#     $cmd -t filter -F ACL-ALLOW || true
-#     for hook in INPUT OUTPUT; do
-#       $cmd -t filter -D "$hook" -j ACL-ALLOW 2>/dev/null || true
-#     done
-#     $cmd -t filter -X ACL-ALLOW || true
-#   fi
-# done
-# echo "[INFO] Cleanup complete — old ACL-ALLOW chain flushed/deleted from filter table"
+# Ensure routing table exists
+grep -q "^100 tproxy" /etc/iproute2/rt_tables 2>/dev/null || \
+  echo "100 tproxy" >> /etc/iproute2/rt_tables
 
-# --- MARK ALL 80/443 TCP & UDP TRAFFIC IN MANGLE (for transparent proxy) ---
-# echo "[INFO] Marking all TCP/UDP traffic on ports 80 and 443 in mangle table"
-# for cmd in iptables ip6tables; do
-#   $cmd -t mangle -N TPROXY-MARK 2>/dev/null || $cmd -t mangle -F TPROXY-MARK
-#
-#   $cmd -t mangle -A TPROXY-MARK -p tcp -m multiport --dports 80,443 -j MARK --set-mark 1
-#   $cmd -t mangle -A TPROXY-MARK -p udp -m multiport --dports 80,443 -j MARK --set-mark 1
-#   $cmd -t mangle -A TPROXY-MARK -j RETURN
-#
-#   $cmd -t mangle -C PREROUTING -j TPROXY-MARK 2>/dev/null || $cmd -t mangle -I PREROUTING -j TPROXY-MARK
-# done
+# Add fwmark rule if missing
+ip rule list | grep -q "fwmark 0x1 lookup tproxy" || \
+  ip rule add fwmark 1 lookup tproxy
 
-# --- ACCEPT rules in FILTER table for ports 80/443 ONLY for allowed clients ---
-# echo "[INFO] Adding ACCEPT rules in filter table for ports 80/443 for allowed clients"
-# for ip in "${CLIENTS[@]}"; do
-#   if [[ "$ip" == *:* ]]; then
-#     for port in 80 443; do
-#       ip6tables -C INPUT -s "$ip" -p tcp --dport "$port" -j ACCEPT 2>/dev/null || ip6tables -I INPUT -s "$ip" -p tcp --dport "$port" -j ACCEPT
-#       ip6tables -C OUTPUT -d "$ip" -p tcp --sport "$port" -j ACCEPT 2>/dev/null || ip6tables -I OUTPUT -d "$ip" -p tcp --sport "$port" -j ACCEPT
-#       ip6tables -C INPUT -s "$ip" -p udp --dport "$port" -j ACCEPT 2>/dev/null || ip6tables -I INPUT -s "$ip" -p udp --dport "$port" -j ACCEPT
-#       ip6tables -C OUTPUT -d "$ip" -p udp --sport "$port" -j ACCEPT 2>/dev/null || ip6tables -I OUTPUT -d "$ip" -p udp --sport "$port" -j ACCEPT
-#     done
-#   else
-#     for port in 80 443; do
-#       iptables -C INPUT -s "$ip" -p tcp --dport "$port" -j ACCEPT 2>/dev/null || iptables -I INPUT -s "$ip" -p tcp --dport "$port" -j ACCEPT
-#       iptables -C OUTPUT -d "$ip" -p tcp --sport "$port" -j ACCEPT 2>/dev/null || iptables -I OUTPUT -d "$ip" -p tcp --sport "$port" -j ACCEPT
-#       iptables -C INPUT -s "$ip" -p udp --dport "$port" -j ACCEPT 2>/dev/null || iptables -I INPUT -s "$ip" -p udp --dport "$port" -j ACCEPT
-#       iptables -C OUTPUT -d "$ip" -p udp --sport "$port" -j ACCEPT 2>/dev/null || iptables -I OUTPUT -d "$ip" -p udp --sport "$port" -j ACCEPT
-#     done
-#   fi
-# done
-# echo "[INFO] ACCEPT rules for ports 80/443 added"
+# Add local route if missing
+ip route show table tproxy | grep -q "local 0.0.0.0/0 dev lo" || \
+  ip route add local 0.0.0.0/0 dev lo table tproxy
 
-# --- DROP all other 80/443 TCP & UDP traffic ---
-# echo "[INFO] Adding DROP rules in filter table for all other traffic on ports 80 and 443"
-# for cmd in iptables ip6tables; do
-#   for port in 80 443; do
-#     $cmd -C INPUT -p tcp --dport "$port" -j DROP 2>/dev/null || $cmd -A INPUT -p tcp --dport "$port" -j DROP
-#     $cmd -C OUTPUT -p tcp --sport "$port" -j DROP 2>/dev/null || $cmd -A OUTPUT -p tcp --sport "$port" -j DROP
-#     $cmd -C INPUT -p udp --dport "$port" -j DROP 2>/dev/null || $cmd -A INPUT -p udp --dport "$port" -j DROP
-#     $cmd -C OUTPUT -p udp --sport "$port" -j DROP 2>/dev/null || $cmd -A OUTPUT -p udp --sport "$port" -j DROP
-#   done
-# done
+###############################################################################
+# LOOP-SAFE DIVERT RULE
+###############################################################################
 
-echo "[INFO] ✅ ACL logic commented out — no iptables rules applied"
+iptables -t mangle -N DIVERT 2>/dev/null || true
+iptables -t mangle -F DIVERT
+
+iptables -t mangle -A DIVERT -j MARK --set-mark 1
+iptables -t mangle -A DIVERT -j ACCEPT
+
+iptables -t mangle -C PREROUTING -p tcp -m socket -j DIVERT 2>/dev/null || \
+  iptables -t mangle -I PREROUTING -p tcp -m socket -j DIVERT
+
+###############################################################################
+# MARK 80/443 FOR TPROXY
+###############################################################################
+
+echo "[INFO] Marking TCP/UDP 80,443 for TPROXY"
+
+for cmd in iptables ip6tables; do
+  $cmd -t mangle -N TPROXY-MARK 2>/dev/null || $cmd -t mangle -F TPROXY-MARK
+
+  $cmd -t mangle -A TPROXY-MARK -p tcp -m multiport --dports 80,443 -j MARK --set-mark 1
+  $cmd -t mangle -A TPROXY-MARK -p udp -m multiport --dports 80,443 -j MARK --set-mark 1
+  $cmd -t mangle -A TPROXY-MARK -j RETURN
+
+  $cmd -t mangle -C PREROUTING -j TPROXY-MARK 2>/dev/null || \
+    $cmd -t mangle -I PREROUTING -j TPROXY-MARK
+done
+
+###############################################################################
+# FILTER TABLE ACL
+###############################################################################
+
+echo "[INFO] Applying ACL filter rules"
+
+# Allow SSH + DNS always
+for cmd in iptables ip6tables; do
+  for port in 22 53; do
+    $cmd -C INPUT -p tcp --dport "$port" -j ACCEPT 2>/dev/null || \
+      $cmd -I INPUT -p tcp --dport "$port" -j ACCEPT
+
+    $cmd -C OUTPUT -p tcp --sport "$port" -j ACCEPT 2>/dev/null || \
+      $cmd -I OUTPUT -p tcp --sport "$port" -j ACCEPT
+  done
+
+  $cmd -C INPUT -p udp --dport 53 -j ACCEPT 2>/dev/null || \
+    $cmd -I INPUT -p udp --dport 53 -j ACCEPT
+
+  $cmd -C OUTPUT -p udp --sport 53 -j ACCEPT 2>/dev/null || \
+    $cmd -I OUTPUT -p udp --sport 53 -j ACCEPT
+done
+
+# Allow 80/443 only for allowed clients
+for ip in "${CLIENTS[@]}"; do
+  if [[ "$ip" == *:* ]]; then
+    for port in 80 443; do
+      ip6tables -C INPUT -s "$ip" -p tcp --dport "$port" -j ACCEPT 2>/dev/null || \
+        ip6tables -I INPUT -s "$ip" -p tcp --dport "$port" -j ACCEPT
+      ip6tables -C INPUT -s "$ip" -p udp --dport "$port" -j ACCEPT 2>/dev/null || \
+        ip6tables -I INPUT -s "$ip" -p udp --dport "$port" -j ACCEPT
+    done
+  else
+    for port in 80 443; do
+      iptables -C INPUT -s "$ip" -p tcp --dport "$port" -j ACCEPT 2>/dev/null || \
+        iptables -I INPUT -s "$ip" -p tcp --dport "$port" -j ACCEPT
+      iptables -C INPUT -s "$ip" -p udp --dport "$port" -j ACCEPT 2>/dev/null || \
+        iptables -I INPUT -s "$ip" -p udp --dport "$port" -j ACCEPT
+    done
+  fi
+done
+
+# Drop all other 80/443
+for cmd in iptables ip6tables; do
+  for port in 80 443; do
+    $cmd -C INPUT -p tcp --dport "$port" -j DROP 2>/dev/null || \
+      $cmd -A INPUT -p tcp --dport "$port" -j DROP
+    $cmd -C INPUT -p udp --dport "$port" -j DROP 2>/dev/null || \
+      $cmd -A INPUT -p udp --dport "$port" -j DROP
+  done
+done
+
+echo "[INFO] ✅ ACL + TPROXY setup complete (TCP + QUIC ready)"
