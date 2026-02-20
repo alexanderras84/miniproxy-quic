@@ -43,8 +43,8 @@ RUN mkdir -p /etc/sing-box /etc/miniproxy
 # Copy config & scripts
 # -------------------------------------------------
 COPY config.json /etc/sing-box/config.json
-COPY generateacl.sh /generateacl.sh
-COPY dyndnscron.sh /dyndnscron.sh
+#COPY generateacl.sh /generateacl.sh
+#COPY dyndnscron.sh /dyndnscron.sh
 COPY entrypoint.sh /entrypoint.sh
 
 RUN chmod +x /generateacl.sh /dyndnscron.sh /entrypoint.sh
