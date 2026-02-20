@@ -62,37 +62,27 @@ read_acl
 echo "[INFO] Starting ACL generation"
 
 ###############################################################################
-# TPROXY POLICY ROUTING (REQUIRED)
+# TPROXY POLICY ROUTING (REQUIRED FOR TRUE TRANSPARENT MODE)
 ###############################################################################
 
-# Safe rule
+# Add fwmark rule safely
 ip rule add fwmark 1 lookup 100 priority 10000 2>/dev/null || true
 
-# Safe route
+# Route marked packets to loopback
 ip route replace local 0.0.0.0/0 dev lo table 100
 
 ###############################################################################
-# LOOP PROTECTION
+# CLEAN EXISTING TPROXY RULES (IDEMPOTENT)
 ###############################################################################
 
-iptables -t mangle -N DIVERT 2>/dev/null || true
-iptables -t mangle -F DIVERT
-iptables -t mangle -A DIVERT -j MARK --set-mark 1
-iptables -t mangle -A DIVERT -j ACCEPT
-
-iptables -t mangle -C PREROUTING -p tcp -m socket -j DIVERT 2>/dev/null || \
-  iptables -t mangle -I PREROUTING -p tcp -m socket -j DIVERT
-
-###############################################################################
-# REAL TPROXY INTERCEPTION (NOT JUST MARKING)
-###############################################################################
-
-# Clean old rules first (idempotent safety)
 iptables -t mangle -D PREROUTING -p tcp --dport 443 -j TPROXY --on-port 443 --tproxy-mark 0x1/0x1 2>/dev/null || true
 iptables -t mangle -D PREROUTING -p udp --dport 443 -j TPROXY --on-port 443 --tproxy-mark 0x1/0x1 2>/dev/null || true
 iptables -t mangle -D PREROUTING -p tcp --dport 80  -j TPROXY --on-port 80  --tproxy-mark 0x1/0x1 2>/dev/null || true
 
-# Add interception
+###############################################################################
+# TRUE TPROXY INTERCEPTION
+###############################################################################
+
 iptables -t mangle -A PREROUTING -p tcp --dport 443 \
   -j TPROXY --on-port 443 --tproxy-mark 0x1/0x1
 
@@ -103,7 +93,7 @@ iptables -t mangle -A PREROUTING -p tcp --dport 80 \
   -j TPROXY --on-port 80 --tproxy-mark 0x1/0x1
 
 ###############################################################################
-# FILTER ACL (UNCHANGED LOGIC)
+# FILTER ACL
 ###############################################################################
 
 echo "[INFO] Applying filter ACL"
@@ -129,7 +119,7 @@ for ip in "${CLIENTS[@]}"; do
   done
 done
 
-# Drop all other 80/443
+# Drop all other 80/443 traffic
 for port in 80 443; do
   iptables -C INPUT -p tcp --dport "$port" -j DROP 2>/dev/null || \
     iptables -A INPUT -p tcp --dport "$port" -j DROP
@@ -137,4 +127,4 @@ for port in 80 443; do
     iptables -A INPUT -p udp --dport "$port" -j DROP
 done
 
-echo "[INFO] ✅ ACL + TPROXY setup complete"
+echo "[INFO] ✅ TRUE TRANSPARENT ACL + TPROXY setup complete"
