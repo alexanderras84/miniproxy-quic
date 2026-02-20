@@ -36,36 +36,5 @@
       "tcp_fast_open": true,
       "udp_fragment": true
     }
-  ],
-  "rule-providers": {
-    "allowed_clients": {
-      "type": "file",
-      "format": "text",
-      "path": "/etc/sing-box/allowlist.acl",
-      "reload": true
-    }
-  },
-  "route": {
-    "rules": [
-      {
-        "inbound": [
-          "tproxy-in-443",
-          "tproxy-in-80"
-        ],
-        "rule_set": "allowed_clients",
-        "action": "direct"
-      },
-      {
-        "inbound": [
-          "tproxy-in-443",
-          "tproxy-in-80"
-        ],
-        "invert": true,
-        "rule_set": "allowed_clients",
-        "action": "block"
-      }
-    ],
-    "auto_detect_interface": true,
-    "final": "direct"
-  }
+  ]
 }
