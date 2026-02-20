@@ -7,7 +7,7 @@
     {
       "type": "tproxy",
       "tag": "tproxy-in-443",
-      "listen": "0.0.0.0",
+      "listen": "127.0.0.1",
       "listen_port": 443,
       "sniff": true,
       "sniff_override_destination": true,
@@ -19,7 +19,7 @@
     {
       "type": "tproxy",
       "tag": "tproxy-in-80",
-      "listen": "0.0.0.0",
+      "listen": "127.0.0.1",
       "listen_port": 80,
       "sniff": true,
       "sniff_override_destination": true,
