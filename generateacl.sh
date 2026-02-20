@@ -11,13 +11,12 @@ export DYNDNS_CRON_ENABLED=false
 function read_acl () {
   echo "[INFO] Reading allowed clients from source..."
 
-  for i in "${client_list[@]}"
-  do
+  for i in "${client_list[@]}"; do
     if timeout 15s /usr/bin/ipcalc -cs "$i" >/dev/null 2>&1; then
       CLIENTS+=( "$i" )
     else
-      RESOLVE_IPV4_LIST=$(timeout 5s /usr/bin/dig +short "$i" A 2>/dev/null)
-      RESOLVE_IPV6_LIST=$(timeout 5s /usr/bin/dig +short "$i" AAAA 2>/dev/null)
+      RESOLVE_IPV4_LIST=$(timeout 5s /usr/bin/dig +short "$i" A 2>/dev/null || true)
+      RESOLVE_IPV6_LIST=$(timeout 5s /usr/bin/dig +short "$i" AAAA 2>/dev/null || true)
 
       if [ -n "$RESOLVE_IPV4_LIST" ] || [ -n "$RESOLVE_IPV6_LIST" ]; then
         while read -r ip4; do
@@ -28,7 +27,7 @@ function read_acl () {
           [ -n "$ip6" ] && CLIENTS+=( "$ip6" ) && DYNDNS_CRON_ENABLED=true
         done <<< "$RESOLVE_IPV6_LIST"
       else
-        echo "[ERROR] Could not resolve A or AAAA records for '$i', skipping"
+        echo "[WARN] Could not resolve '$i'"
       fi
     fi
   done
@@ -42,6 +41,10 @@ function read_acl () {
   echo "[INFO] Final resolved clients:"
   printf '%s\n' "${CLIENTS[@]}"
 }
+
+###############################################################################
+# LOAD CLIENT SOURCE
+###############################################################################
 
 if [ -n "${ALLOWED_CLIENTS_FILE:-}" ]; then
   if [ -f "$ALLOWED_CLIENTS_FILE" ]; then
@@ -59,25 +62,21 @@ read_acl
 echo "[INFO] Starting ACL + TPROXY setup"
 
 ###############################################################################
-# TPROXY POLICY ROUTING (REQUIRED FOR QUIC)
+# TPROXY POLICY ROUTING (ALPINE SAFE)
 ###############################################################################
 
-echo "[INFO] Setting up policy routing for TPROXY"
-
-# Ensure routing table exists
-grep -q "^100 tproxy" /etc/iproute2/rt_tables 2>/dev/null || \
-  echo "100 tproxy" >> /etc/iproute2/rt_tables
+echo "[INFO] Setting up policy routing"
 
 # Add fwmark rule if missing
-ip rule list | grep -q "fwmark 0x1 lookup tproxy" || \
-  ip rule add fwmark 1 lookup tproxy
+ip rule list | grep -q "fwmark 0x1 lookup 100" || \
+  ip rule add fwmark 1 lookup 100
 
 # Add local route if missing
-ip route show table tproxy | grep -q "local 0.0.0.0/0 dev lo" || \
-  ip route add local 0.0.0.0/0 dev lo table tproxy
+ip route show table 100 | grep -q "local 0.0.0.0/0 dev lo" || \
+  ip route add local 0.0.0.0/0 dev lo table 100
 
 ###############################################################################
-# LOOP-SAFE DIVERT RULE
+# LOOP PROTECTION (DIVERT)
 ###############################################################################
 
 iptables -t mangle -N DIVERT 2>/dev/null || true
@@ -90,7 +89,7 @@ iptables -t mangle -C PREROUTING -p tcp -m socket -j DIVERT 2>/dev/null || \
   iptables -t mangle -I PREROUTING -p tcp -m socket -j DIVERT
 
 ###############################################################################
-# MARK 80/443 FOR TPROXY
+# MARK PORTS 80/443 FOR TPROXY
 ###############################################################################
 
 echo "[INFO] Marking TCP/UDP 80,443 for TPROXY"
@@ -110,23 +109,17 @@ done
 # FILTER TABLE ACL
 ###############################################################################
 
-echo "[INFO] Applying ACL filter rules"
+echo "[INFO] Applying filter ACL rules"
 
-# Allow SSH + DNS always
+# Always allow SSH + DNS
 for cmd in iptables ip6tables; do
   for port in 22 53; do
     $cmd -C INPUT -p tcp --dport "$port" -j ACCEPT 2>/dev/null || \
       $cmd -I INPUT -p tcp --dport "$port" -j ACCEPT
-
-    $cmd -C OUTPUT -p tcp --sport "$port" -j ACCEPT 2>/dev/null || \
-      $cmd -I OUTPUT -p tcp --sport "$port" -j ACCEPT
   done
 
   $cmd -C INPUT -p udp --dport 53 -j ACCEPT 2>/dev/null || \
     $cmd -I INPUT -p udp --dport 53 -j ACCEPT
-
-  $cmd -C OUTPUT -p udp --sport 53 -j ACCEPT 2>/dev/null || \
-    $cmd -I OUTPUT -p udp --sport 53 -j ACCEPT
 done
 
 # Allow 80/443 only for allowed clients
@@ -148,7 +141,7 @@ for ip in "${CLIENTS[@]}"; do
   fi
 done
 
-# Drop all other 80/443
+# Drop all other 80/443 traffic
 for cmd in iptables ip6tables; do
   for port in 80 443; do
     $cmd -C INPUT -p tcp --dport "$port" -j DROP 2>/dev/null || \
