@@ -33,9 +33,7 @@ function read_acl () {
   done
 
   if ! printf '%s\n' "${client_list[@]}" | grep -q '127.0.0.1'; then
-    if [ "$DYNDNS_CRON_ENABLED" = true ]; then
-      CLIENTS+=( "127.0.0.1" )
-    fi
+    CLIENTS+=( "127.0.0.1" )
   fi
 
   echo "[INFO] Final resolved clients:"
@@ -62,69 +60,59 @@ read_acl
 echo "[INFO] Starting ACL generation"
 
 ###############################################################################
-# TPROXY POLICY ROUTING (REQUIRED FOR TRUE TRANSPARENT MODE)
+# CLEAN OLD RULES (SAFE RESET OF 80/443 ONLY)
 ###############################################################################
 
-# Add fwmark rule safely
-ip rule add fwmark 1 lookup 100 priority 10000 2>/dev/null || true
-
-# Route marked packets to loopback
-ip route replace local 0.0.0.0/0 dev lo table 100
-
-###############################################################################
-# CLEAN EXISTING TPROXY RULES (IDEMPOTENT)
-###############################################################################
-
-iptables -t mangle -D PREROUTING -p tcp --dport 443 -j TPROXY --on-port 443 --tproxy-mark 0x1/0x1 2>/dev/null || true
-iptables -t mangle -D PREROUTING -p udp --dport 443 -j TPROXY --on-port 443 --tproxy-mark 0x1/0x1 2>/dev/null || true
-iptables -t mangle -D PREROUTING -p tcp --dport 80  -j TPROXY --on-port 80  --tproxy-mark 0x1/0x1 2>/dev/null || true
-
-###############################################################################
-# TRUE TPROXY INTERCEPTION
-###############################################################################
-
-iptables -t mangle -A PREROUTING -p tcp --dport 443 \
-  -j TPROXY --on-port 443 --tproxy-mark 0x1/0x1
-
-iptables -t mangle -A PREROUTING -p udp --dport 443 \
-  -j TPROXY --on-port 443 --tproxy-mark 0x1/0x1
-
-iptables -t mangle -A PREROUTING -p tcp --dport 80 \
-  -j TPROXY --on-port 80 --tproxy-mark 0x1/0x1
-
-###############################################################################
-# FILTER ACL
-###############################################################################
-
-echo "[INFO] Applying filter ACL"
-
-# Always allow SSH + DNS
 for cmd in iptables ip6tables; do
-  for port in 22 53; do
-    $cmd -C INPUT -p tcp --dport "$port" -j ACCEPT 2>/dev/null || \
-      $cmd -I INPUT -p tcp --dport "$port" -j ACCEPT
+  for port in 80 443; do
+    $cmd -D INPUT -p tcp --dport "$port" -j DROP 2>/dev/null || true
+    $cmd -D INPUT -p udp --dport "$port" -j DROP 2>/dev/null || true
   done
+done
+
+###############################################################################
+# ALWAYS ALLOW SSH + DNS
+###############################################################################
+
+echo "[INFO] SSH (22) and DNS (53) allowed"
+
+for cmd in iptables ip6tables; do
+  $cmd -C INPUT -p tcp --dport 22 -j ACCEPT 2>/dev/null || \
+    $cmd -I INPUT -p tcp --dport 22 -j ACCEPT
+
+  $cmd -C INPUT -p tcp --dport 53 -j ACCEPT 2>/dev/null || \
+    $cmd -I INPUT -p tcp --dport 53 -j ACCEPT
 
   $cmd -C INPUT -p udp --dport 53 -j ACCEPT 2>/dev/null || \
     $cmd -I INPUT -p udp --dport 53 -j ACCEPT
 done
 
-# Allow 80/443 only for allowed clients
+###############################################################################
+# ALLOW 80/443 ONLY FOR ALLOWED CLIENTS
+###############################################################################
+
+echo "[INFO] Applying 80/443 client ACL"
+
 for ip in "${CLIENTS[@]}"; do
   for port in 80 443; do
     iptables -C INPUT -s "$ip" -p tcp --dport "$port" -j ACCEPT 2>/dev/null || \
       iptables -I INPUT -s "$ip" -p tcp --dport "$port" -j ACCEPT
+
     iptables -C INPUT -s "$ip" -p udp --dport "$port" -j ACCEPT 2>/dev/null || \
       iptables -I INPUT -s "$ip" -p udp --dport "$port" -j ACCEPT
   done
 done
 
-# Drop all other 80/443 traffic
+###############################################################################
+# DROP ALL OTHER 80/443 TRAFFIC
+###############################################################################
+
 for port in 80 443; do
   iptables -C INPUT -p tcp --dport "$port" -j DROP 2>/dev/null || \
     iptables -A INPUT -p tcp --dport "$port" -j DROP
+
   iptables -C INPUT -p udp --dport "$port" -j DROP 2>/dev/null || \
     iptables -A INPUT -p udp --dport "$port" -j DROP
 done
 
-echo "[INFO] ✅ TRUE TRANSPARENT ACL + TPROXY setup complete"
+echo "[INFO] ✅ DIRECT MODE ACL COMPLETE"
