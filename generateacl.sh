@@ -67,13 +67,14 @@ done
 CLIENTS=( "${RESOLVED_CLIENTS[@]}" )
 
 ###############################################################################
-# ENABLE REQUIRED KERNEL SETTINGS
+# VERIFY HOST KERNEL SETTINGS (DO NOT MODIFY)
 ###############################################################################
 
-echo "[INFO] Enabling kernel routing requirements..."
+echo "[INFO] Verifying host routing prerequisites..."
 
-sysctl -w net.ipv4.ip_forward=1 >/dev/null
-sysctl -w net.ipv4.conf.all.route_localnet=1 >/dev/null
+if ! sysctl net.ipv4.conf.all.route_localnet | grep -q "= 1"; then
+  echo "[WARN] route_localnet is disabled on host — SmartDNS interception may fail"
+fi
 
 ###############################################################################
 # ENSURE POLICY ROUTING EXISTS
@@ -108,18 +109,14 @@ for ip in "${CLIENTS[@]}"; do
 
   if [[ "$ip" =~ ":" ]]; then
 
-    if [ -z "$VPS_IPV6" ]; then
-      continue
-    fi
+    [ -z "$VPS_IPV6" ] && continue
 
     CMD="ip6tables"
     VPS="$VPS_IPV6"
 
   else
 
-    if [ -z "$VPS_IPV4" ]; then
-      continue
-    fi
+    [ -z "$VPS_IPV4" ] && continue
 
     CMD="iptables"
     VPS="$VPS_IPV4"
@@ -137,7 +134,7 @@ for ip in "${CLIENTS[@]}"; do
       -j TPROXY --on-port "$TPROXY_PORT" --tproxy-mark "$MARK"
 
 
-    # UDP interception (QUIC support)
+    # UDP interception (QUIC)
     $CMD -t mangle -A PREROUTING \
       -s "$ip" \
       -d "$VPS" \
