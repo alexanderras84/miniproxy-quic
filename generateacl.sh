@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ###############################################################################
-# CONFIGURATION
+# CONFIG
 ###############################################################################
 
 TPROXY_PORT=443
@@ -11,7 +11,7 @@ MARK=1
 CLIENTS=()
 
 ###############################################################################
-# LOAD CLIENT ACL LIST
+# LOAD CLIENT LIST
 ###############################################################################
 
 echo "[INFO] Loading allowed clients..."
@@ -30,29 +30,32 @@ CLIENTS+=( "127.0.0.1" )
 
 echo "[INFO] Resolving dynamic ACL entries..."
 
-RESOLVED_CLIENTS=()
+RESOLVED=()
 
 for entry in "${CLIENTS[@]}"; do
-  if ipcalc -cs "$entry" >/dev/null 2>&1; then
-    RESOLVED_CLIENTS+=( "$entry" )
-  else
-    dig +short "$entry" A | while read -r ip; do
-      [ -n "$ip" ] && RESOLVED_CLIENTS+=( "$ip" )
-    done
 
-    dig +short "$entry" AAAA | while read -r ip; do
-      [ -n "$ip" ] && RESOLVED_CLIENTS+=( "$ip" )
-    done
+  if ipcalc -cs "$entry" >/dev/null 2>&1; then
+    RESOLVED+=( "$entry" )
+    continue
   fi
+
+  while read -r ip; do
+    [ -n "$ip" ] && RESOLVED+=( "$ip" )
+  done < <(dig +short "$entry" A)
+
+  while read -r ip; do
+    [ -n "$ip" ] && RESOLVED+=( "$ip" )
+  done < <(dig +short "$entry" AAAA)
+
 done
 
-CLIENTS=( "${RESOLVED_CLIENTS[@]}" )
+CLIENTS=( "${RESOLVED[@]}" )
 
 ###############################################################################
-# ROUTING TABLE FOR TPROXY
+# POLICY ROUTING FOR TPROXY
 ###############################################################################
 
-echo "[INFO] Configuring routing table..."
+echo "[INFO] Installing fwmark routing rule..."
 
 ip rule add fwmark $MARK table 100 2>/dev/null || true
 ip route add local default dev lo table 100 2>/dev/null || true
@@ -61,18 +64,18 @@ ip route add local default dev lo table 100 2>/dev/null || true
 # CLEAN OLD RULES
 ###############################################################################
 
-echo "[INFO] Resetting PREROUTING rules..."
+echo "[INFO] Resetting PREROUTING chain..."
 
-iptables -t mangle -F PREROUTING
+iptables  -t mangle -F PREROUTING
 ip6tables -t mangle -F PREROUTING
 
 ###############################################################################
-# LOOP PREVENTION RULES
+# LOOP PROTECTION (CRITICAL)
 ###############################################################################
 
-echo "[INFO] Installing loop-prevention guards..."
+echo "[INFO] Installing loop protection rules..."
 
-iptables -t mangle -I PREROUTING 1 -m mark --mark $MARK -j RETURN
+iptables  -t mangle -I PREROUTING 1 -m mark --mark $MARK -j RETURN
 ip6tables -t mangle -I PREROUTING 1 -m mark --mark $MARK -j RETURN
 
 if [ -n "${VPS_IPV4:-}" ]; then
@@ -86,24 +89,24 @@ if [ -n "${VPS_IPV6:-}" ]; then
 fi
 
 ###############################################################################
-# APPLY TPROXY RULES
+# APPLY CLIENT INTERCEPTION RULES
 ###############################################################################
 
-echo "[INFO] Applying interception rules..."
+echo "[INFO] Applying whitelist interception rules..."
 
 for ip in "${CLIENTS[@]}"; do
 
   if [[ "$ip" == *":"* ]]; then
-    CMD="ip6tables"
+    IPT="ip6tables"
     DEST="${VPS_IPV6:-::/0}"
   else
-    CMD="iptables"
+    IPT="iptables"
     DEST="${VPS_IPV4:-0.0.0.0/0}"
   fi
 
   for port in 80 443; do
 
-    $CMD -t mangle -A PREROUTING \
+    $IPT -t mangle -A PREROUTING \
       -s "$ip" \
       -d "$DEST" \
       -p tcp \
@@ -112,7 +115,7 @@ for ip in "${CLIENTS[@]}"; do
       --on-port $TPROXY_PORT \
       --tproxy-mark $MARK
 
-    $CMD -t mangle -A PREROUTING \
+    $IPT -t mangle -A PREROUTING \
       -s "$ip" \
       -d "$DEST" \
       -p udp \
@@ -122,6 +125,7 @@ for ip in "${CLIENTS[@]}"; do
       --tproxy-mark $MARK
 
   done
+
 done
 
-echo "[INFO] ACL + dual-stack TPROXY setup complete"
+echo "[INFO] ACL interception ready."
