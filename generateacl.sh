@@ -36,13 +36,13 @@ for entry in "${CLIENTS[@]}"; do
   if ipcalc -cs "$entry" >/dev/null 2>&1; then
     RESOLVED_CLIENTS+=( "$entry" )
   else
-    while read -r ip; do
+    dig +short "$entry" A | while read -r ip; do
       [ -n "$ip" ] && RESOLVED_CLIENTS+=( "$ip" )
-    done < <(dig +short "$entry" A)
+    done
 
-    while read -r ip; do
+    dig +short "$entry" AAAA | while read -r ip; do
       [ -n "$ip" ] && RESOLVED_CLIENTS+=( "$ip" )
-    done < <(dig +short "$entry" AAAA)
+    done
   fi
 done
 
@@ -67,16 +67,22 @@ iptables -t mangle -F PREROUTING
 ip6tables -t mangle -F PREROUTING
 
 ###############################################################################
-# LOOP PREVENTION RULES (CRITICAL)
+# LOOP PREVENTION RULES
 ###############################################################################
 
 echo "[INFO] Installing loop-prevention guards..."
 
 iptables -t mangle -I PREROUTING 1 -m mark --mark $MARK -j RETURN
+ip6tables -t mangle -I PREROUTING 1 -m mark --mark $MARK -j RETURN
 
 if [ -n "${VPS_IPV4:-}" ]; then
   iptables -t mangle -I PREROUTING 2 -s "$VPS_IPV4" -j RETURN
   iptables -t mangle -I PREROUTING 3 -d "$VPS_IPV4" -j RETURN
+fi
+
+if [ -n "${VPS_IPV6:-}" ]; then
+  ip6tables -t mangle -I PREROUTING 2 -s "$VPS_IPV6" -j RETURN
+  ip6tables -t mangle -I PREROUTING 3 -d "$VPS_IPV6" -j RETURN
 fi
 
 ###############################################################################
@@ -89,16 +95,18 @@ for ip in "${CLIENTS[@]}"; do
 
   if [[ "$ip" == *":"* ]]; then
     CMD="ip6tables"
+    DEST="${VPS_IPV6:-::/0}"
   else
     CMD="iptables"
+    DEST="${VPS_IPV4:-0.0.0.0/0}"
   fi
 
   for port in 80 443; do
 
     $CMD -t mangle -A PREROUTING \
       -s "$ip" \
+      -d "$DEST" \
       -p tcp \
-      -d "${VPS_IPV4:-0.0.0.0/0}" \
       --dport "$port" \
       -j TPROXY \
       --on-port $TPROXY_PORT \
@@ -106,8 +114,8 @@ for ip in "${CLIENTS[@]}"; do
 
     $CMD -t mangle -A PREROUTING \
       -s "$ip" \
+      -d "$DEST" \
       -p udp \
-      -d "${VPS_IPV4:-0.0.0.0/0}" \
       --dport "$port" \
       -j TPROXY \
       --on-port $TPROXY_PORT \
@@ -116,4 +124,4 @@ for ip in "${CLIENTS[@]}"; do
   done
 done
 
-echo "[INFO] ACL + TPROXY setup complete"
+echo "[INFO] ACL + dual-stack TPROXY setup complete"
