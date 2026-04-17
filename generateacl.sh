@@ -8,10 +8,19 @@ set -euo pipefail
 TPROXY_PORT=443
 MARK=1
 
-VPS_IPV4="193.161.200.70"
-VPS_IPV6="2a11:fc0:0:a:250:56ff:fe9b:37a0"
+VPS_IPV4="${VPS_IPV4:-}"
+VPS_IPV6="${VPS_IPV6:-}"
 
 CLIENTS=()
+
+###############################################################################
+# VALIDATE ENVIRONMENT
+###############################################################################
+
+if [ -z "$VPS_IPV4" ] && [ -z "$VPS_IPV6" ]; then
+  echo "[ERROR] VPS_IPV4 or VPS_IPV6 must be provided via environment variables."
+  exit 1
+fi
 
 ###############################################################################
 # LOAD CLIENT ACL LIST
@@ -28,25 +37,63 @@ fi
 CLIENTS+=( "127.0.0.1" )
 
 ###############################################################################
+# RESOLVE HOSTNAMES → IP ADDRESSES
+###############################################################################
+
+echo "[INFO] Resolving dynamic ACL entries..."
+
+RESOLVED_CLIENTS=()
+
+for entry in "${CLIENTS[@]}"; do
+
+  if ipcalc -cs "$entry" >/dev/null 2>&1; then
+    RESOLVED_CLIENTS+=( "$entry" )
+    continue
+  fi
+
+  IPV4_LIST=$(dig +short "$entry" A || true)
+  IPV6_LIST=$(dig +short "$entry" AAAA || true)
+
+  for ip in $IPV4_LIST; do
+    RESOLVED_CLIENTS+=( "$ip" )
+  done
+
+  for ip in $IPV6_LIST; do
+    RESOLVED_CLIENTS+=( "$ip" )
+  done
+
+done
+
+CLIENTS=( "${RESOLVED_CLIENTS[@]}" )
+
+###############################################################################
 # ENABLE REQUIRED KERNEL SETTINGS
 ###############################################################################
+
+echo "[INFO] Enabling kernel routing requirements..."
 
 sysctl -w net.ipv4.ip_forward=1 >/dev/null
 sysctl -w net.ipv4.conf.all.route_localnet=1 >/dev/null
 
 ###############################################################################
-# POLICY ROUTING (SAFE, NON-DUPLICATE)
+# ENSURE POLICY ROUTING EXISTS
 ###############################################################################
 
-ip rule | grep -q "fwmark $MARK lookup 100" || \
+echo "[INFO] Ensuring policy routing table exists..."
+
+if ! ip rule | grep -q "fwmark $MARK lookup 100"; then
   ip rule add fwmark $MARK table 100
+fi
 
-ip route show table 100 | grep -q "local default" || \
+if ! ip route show table 100 | grep -q "local default"; then
   ip route add local default dev lo table 100
+fi
 
 ###############################################################################
-# REMOVE ONLY OUR OWN RULES
+# CLEAN PREVIOUS RULES SAFELY
 ###############################################################################
+
+echo "[INFO] Cleaning previous SmartDNS interception rules..."
 
 iptables -t mangle -F PREROUTING 2>/dev/null || true
 ip6tables -t mangle -F PREROUTING 2>/dev/null || true
@@ -55,59 +102,91 @@ ip6tables -t mangle -F PREROUTING 2>/dev/null || true
 # APPLY SMARTDNS + ACL INTERCEPTION RULES
 ###############################################################################
 
-echo "[INFO] Applying SmartDNS interception rules with ACL..."
+echo "[INFO] Applying SmartDNS interception rules with ACL whitelist..."
 
 for ip in "${CLIENTS[@]}"; do
 
   if [[ "$ip" =~ ":" ]]; then
+
+    if [ -z "$VPS_IPV6" ]; then
+      continue
+    fi
+
     CMD="ip6tables"
     VPS="$VPS_IPV6"
+
   else
+
+    if [ -z "$VPS_IPV4" ]; then
+      continue
+    fi
+
     CMD="iptables"
     VPS="$VPS_IPV4"
+
   fi
 
+
   for port in 80 443; do
+
+    # TCP interception
     $CMD -t mangle -A PREROUTING \
       -s "$ip" \
       -d "$VPS" \
       -p tcp --dport "$port" \
       -j TPROXY --on-port "$TPROXY_PORT" --tproxy-mark "$MARK"
 
+
+    # UDP interception (QUIC support)
     $CMD -t mangle -A PREROUTING \
       -s "$ip" \
       -d "$VPS" \
       -p udp --dport "$port" \
       -j TPROXY --on-port "$TPROXY_PORT" --tproxy-mark "$MARK"
+
+
   done
 
 done
 
 ###############################################################################
-# PREVENT LOOPBACK INTERCEPTION
+# PREVENT LOCAL INTERCEPTION LOOPS
 ###############################################################################
 
-iptables -t mangle -C OUTPUT -m addrtype --src-type LOCAL -j RETURN 2>/dev/null || \
-iptables -t mangle -I OUTPUT -m addrtype --src-type LOCAL -j RETURN
+echo "[INFO] Preventing interception loops..."
+
+if ! iptables -t mangle -C OUTPUT -m addrtype --src-type LOCAL -j RETURN 2>/dev/null; then
+  iptables -t mangle -I OUTPUT -m addrtype --src-type LOCAL -j RETURN
+fi
 
 ###############################################################################
 # OPEN REQUIRED INPUT PORTS
 ###############################################################################
 
+echo "[INFO] Ensuring INPUT accept rules exist..."
+
 for cmd in iptables ip6tables; do
 
-  $cmd -C INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || \
-  $cmd -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+  $cmd -C INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null \
+    || $cmd -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
-  $cmd -C INPUT -p tcp --dport 80 -j ACCEPT 2>/dev/null || \
-  $cmd -A INPUT -p tcp --dport 80 -j ACCEPT
 
-  $cmd -C INPUT -p tcp --dport 443 -j ACCEPT 2>/dev/null || \
-  $cmd -A INPUT -p tcp --dport 443 -j ACCEPT
+  $cmd -C INPUT -p tcp --dport 80 -j ACCEPT 2>/dev/null \
+    || $cmd -A INPUT -p tcp --dport 80 -j ACCEPT
 
-  $cmd -C INPUT -p udp --dport 443 -j ACCEPT 2>/dev/null || \
-  $cmd -A INPUT -p udp --dport 443 -j ACCEPT
+
+  $cmd -C INPUT -p tcp --dport 443 -j ACCEPT 2>/dev/null \
+    || $cmd -A INPUT -p tcp --dport 443 -j ACCEPT
+
+
+  $cmd -C INPUT -p udp --dport 443 -j ACCEPT 2>/dev/null \
+    || $cmd -A INPUT -p udp --dport 443 -j ACCEPT
+
 
 done
 
-echo "[INFO] ✅ SmartDNS interception with ACL whitelist applied."
+###############################################################################
+# COMPLETE
+###############################################################################
+
+echo "[INFO] ✅ SmartDNS interception with ACL whitelist successfully configured."
