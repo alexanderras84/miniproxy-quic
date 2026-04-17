@@ -6,6 +6,10 @@ ENV ALLOWED_CLIENTS="127.0.0.1"
 ENV DYNDNS_CRON_ENABLED="false"
 ENV DYNDNS_CRON_SCHEDULE="*/1 * * * *"
 
+# SmartDNS interception targets (must be supplied at runtime)
+ENV VPS_IPV4=""
+ENV VPS_IPV6=""
+
 EXPOSE 80/tcp
 EXPOSE 443/tcp
 EXPOSE 443/udp
