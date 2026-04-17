@@ -60,15 +60,5 @@
         "outbound": "direct-out"
       }
     ]
-  },
-
-  "experimental": {
-    "cache_file": {
-      "enabled": false
-    }
-  },
-
-  "socket": {
-    "mark": 1
   }
 }
