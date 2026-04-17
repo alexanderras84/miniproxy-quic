@@ -12,7 +12,9 @@
       "listen_port": 443,
       "network": "tcp",
       "sniff": true,
-      "sniff_override_destination": true
+      "sniff_override_destination": true,
+      "sniff_timeout": "300ms",
+      "domain_strategy": "prefer_ipv4"
     },
     {
       "type": "tproxy",
@@ -22,6 +24,7 @@
       "network": "udp",
       "sniff": true,
       "sniff_override_destination": true,
+      "sniff_timeout": "300ms",
       "udp_fragment": true
     },
     {
@@ -31,7 +34,8 @@
       "listen_port": 80,
       "network": "tcp",
       "sniff": true,
-      "sniff_override_destination": true
+      "sniff_override_destination": true,
+      "sniff_timeout": "300ms"
     }
   ],
 
@@ -43,16 +47,28 @@
   ],
 
   "route": {
-    "rules": [
+    "auto_detect_interface": true,
 
+    "rules": [
       {
         "ip_cidr": [
           "127.0.0.0/8",
-          "193.161.200.70/32"
+          "::1/128",
+          "193.161.200.70/32",
+          "2a11:fc0:0:a:250:56ff:fe9b:37a0/128"
         ],
         "outbound": "direct-out"
       }
-
     ]
+  },
+
+  "experimental": {
+    "cache_file": {
+      "enabled": false
+    }
+  },
+
+  "socket": {
+    "mark": 1
   }
 }
