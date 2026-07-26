@@ -1,23 +1,14 @@
 #!/bin/bash -e
 
-echo "[INFO] Generating ACL..."
-set +e
-source /generateacl.sh
-set -e
-
-if [ "$DYNDNS_CRON_ENABLED" = true ]; then
-  echo "[INFO] DynDNS Address in ALLOWED_CLIENTS detected => Enable cron job"
-  echo "$DYNDNS_CRON_SCHEDULE /bin/bash /dyndnscron.sh" > /etc/miniproxy/dyndns.cron
-  supercronic /etc/miniproxy/dyndns.cron &
-fi
-
-echo "[INFO] Starting sing-box.."
+echo "[INFO] Starting sing-box..."
 sing-box run -c /etc/sing-box/config.json &
 singbox_pid=$!
 
-sleep 5
+until ip link show sb-tun0 >/dev/null 2>&1; do
+  sleep 0.2
+done
 
-echo "==================================================================="
-echo "[INFO] Miniproxy QUIC started"
-echo "==================================================================="
-wait $singbox_pid
+echo "[INFO] Installing TUN interception rules..."
+/bin/bash /tun-intercept.sh
+
+wait "$singbox_pid"
