@@ -6,17 +6,27 @@ TABLE="100"
 MARK="1"
 PORT="443"
 
-# Use an explicit interface when supplied; otherwise use the container's
-# IPv4 default-route interface (normally eth0 in Docker).
-INBOUND_INTERFACE="${INBOUND_INTERFACE:-$(
-  ip -4 route show default |
+default_interface() {
+  ip "$1" route show default 2>/dev/null |
     awk '{for (i = 1; i <= NF; i++) if ($i == "dev") {print $(i + 1); exit}}'
-)}"
+}
 
-[ -n "$INBOUND_INTERFACE" ] || {
-  echo "[ERROR] Could not determine the container inbound interface."
+# Override either at runtime if necessary:
+# -e INBOUND_INTERFACE_V4=eth0
+# -e INBOUND_INTERFACE_V6=eth1
+INBOUND_INTERFACE_V4="${INBOUND_INTERFACE_V4:-$(default_interface -4)}"
+INBOUND_INTERFACE_V6="${INBOUND_INTERFACE_V6:-$(default_interface -6)}"
+
+[ -n "$INBOUND_INTERFACE_V4" ] || {
+  echo "[ERROR] Could not determine the IPv4 inbound interface."
   exit 1
 }
+
+# Docker commonly uses the same interface for both families. If there is no
+# IPv6 default route, use the IPv4 interface unless explicitly overridden.
+if [ -z "$INBOUND_INTERFACE_V6" ]; then
+  INBOUND_INTERFACE_V6="$INBOUND_INTERFACE_V4"
+fi
 
 # Wait up to 10 seconds for sing-box to create the TUN device.
 for i in $(seq 1 20); do
@@ -29,43 +39,44 @@ ip link show "$TUN_INTERFACE" >/dev/null 2>&1 || {
   exit 1
 }
 
-echo "[INFO] Intercepting inbound port $PORT traffic on $INBOUND_INTERFACE"
-echo "[INFO] Routing marked packets through $TUN_INTERFACE"
+echo "[INFO] IPv4 ingress interface: $INBOUND_INTERFACE_V4"
+echo "[INFO] IPv6 ingress interface: $INBOUND_INTERFACE_V6"
+echo "[INFO] Intercepting TCP and UDP port $PORT via $TUN_INTERFACE"
 
-# IPv4: mark inbound HTTPS and QUIC traffic.
+# IPv4: mark incoming HTTPS and QUIC traffic, then route it to sb-tun0.
 iptables -t mangle -C PREROUTING \
-  -i "$INBOUND_INTERFACE" -p tcp --dport "$PORT" \
+  -i "$INBOUND_INTERFACE_V4" -p tcp --dport "$PORT" \
   -j MARK --set-mark "$MARK" 2>/dev/null || \
 iptables -t mangle -A PREROUTING \
-  -i "$INBOUND_INTERFACE" -p tcp --dport "$PORT" \
+  -i "$INBOUND_INTERFACE_V4" -p tcp --dport "$PORT" \
   -j MARK --set-mark "$MARK"
 
 iptables -t mangle -C PREROUTING \
-  -i "$INBOUND_INTERFACE" -p udp --dport "$PORT" \
+  -i "$INBOUND_INTERFACE_V4" -p udp --dport "$PORT" \
   -j MARK --set-mark "$MARK" 2>/dev/null || \
 iptables -t mangle -A PREROUTING \
-  -i "$INBOUND_INTERFACE" -p udp --dport "$PORT" \
+  -i "$INBOUND_INTERFACE_V4" -p udp --dport "$PORT" \
   -j MARK --set-mark "$MARK"
 
 ip rule add fwmark "$MARK" lookup "$TABLE" priority 100 2>/dev/null || true
 ip route replace default dev "$TUN_INTERFACE" table "$TABLE"
 
-# IPv6: apply the same policy.
+# IPv6: same policy, potentially on a different ingress interface.
 ip6tables -t mangle -C PREROUTING \
-  -i "$INBOUND_INTERFACE" -p tcp --dport "$PORT" \
+  -i "$INBOUND_INTERFACE_V6" -p tcp --dport "$PORT" \
   -j MARK --set-mark "$MARK" 2>/dev/null || \
 ip6tables -t mangle -A PREROUTING \
-  -i "$INBOUND_INTERFACE" -p tcp --dport "$PORT" \
+  -i "$INBOUND_INTERFACE_V6" -p tcp --dport "$PORT" \
   -j MARK --set-mark "$MARK"
 
 ip6tables -t mangle -C PREROUTING \
-  -i "$INBOUND_INTERFACE" -p udp --dport "$PORT" \
+  -i "$INBOUND_INTERFACE_V6" -p udp --dport "$PORT" \
   -j MARK --set-mark "$MARK" 2>/dev/null || \
 ip6tables -t mangle -A PREROUTING \
-  -i "$INBOUND_INTERFACE" -p udp --dport "$PORT" \
+  -i "$INBOUND_INTERFACE_V6" -p udp --dport "$PORT" \
   -j MARK --set-mark "$MARK"
 
 ip -6 rule add fwmark "$MARK" lookup "$TABLE" priority 100 2>/dev/null || true
 ip -6 route replace default dev "$TUN_INTERFACE" table "$TABLE"
 
-echo "[INFO] TUN interception rules installed."
+echo "[INFO] Dual-stack TUN interception rules installed."
