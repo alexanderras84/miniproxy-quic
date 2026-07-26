@@ -2,9 +2,9 @@ FROM alpine:3.20
 
 ARG SINGBOX_VERSION=1.12.22
 
-ENV ALLOWED_CLIENTS="127.0.0.1"
-ENV DYNDNS_CRON_ENABLED="false"
-ENV DYNDNS_CRON_SCHEDULE="*/1 * * * *"
+#ENV ALLOWED_CLIENTS="127.0.0.1"
+#ENV DYNDNS_CRON_ENABLED="false"
+#ENV DYNDNS_CRON_SCHEDULE="*/1 * * * *"
 
 EXPOSE 443/tcp
 EXPOSE 443/udp
@@ -25,15 +25,18 @@ RUN curl -fSL "https://github.com/SagerNet/sing-box/releases/download/v${SINGBOX
 
 RUN addgroup miniproxy && adduser -D -H -G miniproxy miniproxy
 
-RUN mkdir -p /etc/sing-box/ /etc/miniproxy
+RUN mkdir -p /etc/sing-box/ 
+#RUN mkdir -p /etc/miniproxy/
 
 # Copy the static config.json directly
 COPY config.json /etc/sing-box/config.json
-COPY generateacl.sh /generateacl.sh
-COPY dyndnscron.sh /dyndnscron.sh
+COPY tun-intercept.sh /tun-intercept.sh
+#COPY generateacl.sh /generateacl.sh
+#COPY dyndnscron.sh /dyndnscron.sh
 COPY entrypoint.sh /entrypoint.sh
 
-RUN chmod +x /generateacl.sh /dyndnscron.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh /tun-intercept.sh
+#RUN chmod +x /generateacl.sh /dyndnscron.sh
 RUN chown -R miniproxy:miniproxy /etc/sing-box/
 
 ENTRYPOINT ["/sbin/tini", "--"]
