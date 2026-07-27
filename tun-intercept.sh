@@ -5,10 +5,26 @@ TUN_INTERFACE="sb-tun0"
 TABLE="100"
 MARK="1"
 PORT="443"
+MARK_RULE_PRIORITY="100"
+LOCAL_RULE_PRIORITY="200"
 
 default_interface() {
   ip "$1" route show default 2>/dev/null |
     awk '{for (i = 1; i <= NF; i++) if ($i == "dev") {print $(i + 1); exit}}'
+}
+
+move_local_rule_after_mark_rule() {
+  FAMILY="$1"
+
+  # Docker DNATs published ports to the container's local address. Preserve the
+  # local table, but move its lookup below the fwmark route rule.
+  if ip "$FAMILY" rule show | grep -q '^0:.*lookup local'; then
+    if ! ip "$FAMILY" rule show | grep -q "^${LOCAL_RULE_PRIORITY}:.*lookup local"; then
+      ip "$FAMILY" rule add priority "$LOCAL_RULE_PRIORITY" lookup local
+    fi
+
+    ip "$FAMILY" rule del priority 0
+  fi
 }
 
 # Override either at runtime if necessary:
@@ -43,7 +59,7 @@ echo "[INFO] IPv4 ingress interface: $INBOUND_INTERFACE_V4"
 echo "[INFO] IPv6 ingress interface: $INBOUND_INTERFACE_V6"
 echo "[INFO] Intercepting TCP and UDP port $PORT via $TUN_INTERFACE"
 
-# IPv4: mark incoming HTTPS and QUIC traffic, then route it to sb-tun0.
+# IPv4: mark incoming HTTPS and QUIC traffic.
 iptables -t mangle -C PREROUTING \
   -i "$INBOUND_INTERFACE_V4" -p tcp --dport "$PORT" \
   -j MARK --set-mark "$MARK" 2>/dev/null || \
@@ -58,7 +74,10 @@ iptables -t mangle -A PREROUTING \
   -i "$INBOUND_INTERFACE_V4" -p udp --dport "$PORT" \
   -j MARK --set-mark "$MARK"
 
-ip rule add fwmark "$MARK" lookup "$TABLE" priority 100 2>/dev/null || true
+# Route marked IPv4 packets into the TUN before local delivery is considered.
+move_local_rule_after_mark_rule -4
+ip rule add fwmark "$MARK" lookup "$TABLE" \
+  priority "$MARK_RULE_PRIORITY" 2>/dev/null || true
 ip route replace default dev "$TUN_INTERFACE" table "$TABLE"
 
 # IPv6: same policy, potentially on a different ingress interface.
@@ -76,7 +95,10 @@ ip6tables -t mangle -A PREROUTING \
   -i "$INBOUND_INTERFACE_V6" -p udp --dport "$PORT" \
   -j MARK --set-mark "$MARK"
 
-ip -6 rule add fwmark "$MARK" lookup "$TABLE" priority 100 2>/dev/null || true
+# Route marked IPv6 packets into the TUN before local delivery is considered.
+move_local_rule_after_mark_rule -6
+ip -6 rule add fwmark "$MARK" lookup "$TABLE" \
+  priority "$MARK_RULE_PRIORITY" 2>/dev/null || true
 ip -6 route replace default dev "$TUN_INTERFACE" table "$TABLE"
 
 echo "[INFO] Dual-stack TUN interception rules installed."
